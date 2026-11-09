@@ -18,6 +18,7 @@
 
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
+extern MenuItemHandlerResult menuhandlerMainMenuCooperative(s32 operation, struct menuitem *item, union handlerdata *data);
 extern struct menuitem g_MpPlayerSetup234MenuItems[];
 extern struct menudialogdef g_NetJoinPlayerSetupMenuDialog;
 
@@ -75,6 +76,19 @@ MenuItemHandlerResult menuhandlerHostStart(s32 operation, struct menuitem *item,
 	return 0;
 }
 
+MenuItemHandlerResult menuhandlerHostCoop(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		if (netStartServer(g_NetMenuPort, g_NetMenuMaxPlayers) == 0) {
+			// pick a mission and difficulty as usual; everyone who has joined
+			// by the time the mission is accepted plays it with us
+			menuhandlerMainMenuCooperative(MENUOP_SET, NULL, NULL);
+		}
+	}
+
+	return 0;
+}
+
 struct menuitem g_NetHostMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
@@ -99,6 +113,14 @@ struct menuitem g_NetHostMenuItems[] = {
 		L_MPMENU_036, // "Start Game"
 		0,
 		menuhandlerHostStart,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Co-Operative Mission\n",
+		0,
+		menuhandlerHostCoop,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,

@@ -938,6 +938,16 @@ void netEndFrame(void)
 	enet_host_flush(g_NetHost);
 }
 
+u32 netStatBytesSent(void)
+{
+	return g_NetHost ? enet_host_get_bytes_sent(g_NetHost) : 0;
+}
+
+u32 netStatBytesReceived(void)
+{
+	return g_NetHost ? enet_host_get_bytes_received(g_NetHost) : 0;
+}
+
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan)
 {
 	if (g_NetMode == NETMODE_CLIENT) {

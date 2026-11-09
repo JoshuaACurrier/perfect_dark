@@ -169,30 +169,9 @@ static inline s16 quantAim(f32 v)
 
 /* server -> client: SVC_CHR_MOVE */
 
-static inline s32 netchrShouldSend(struct chrdata *chr)
+static inline u8 netchrFlags(struct chrdata *chr)
 {
-	struct prop *prop = chr->prop;
-	if (chr->chrnum < 0 || !prop || !prop->syncid || prop->type != PROPTYPE_CHR || !chr->model || !chr->model->anim) {
-		return false;
-	}
-	if (chr->hidden & CHRHFLAG_DELETING) {
-		return false;
-	}
-	// sleeping, hidden or dead chrs don't change much, so only refresh them now and then
-	const s32 idx = chr - g_ChrSlots;
-	if ((chr->chrflags & CHRCFLAG_HIDDEN) || chr->actiontype == ACT_DEAD) {
-		return ((g_NetTick + idx) % 30) == 0;
-	}
-	return true;
-}
-
-static u32 netchrWriteOne(struct netbuf *dst, struct chrdata *chr)
-{
-	struct prop *prop = chr->prop;
-	struct model *model = chr->model;
-	struct anim *anim = model->anim;
-	const s32 idx = chr - g_ChrSlots;
-
+	struct anim *anim = chr->model->anim;
 	u8 flags = 0;
 	if (chr->actiontype == ACT_DIE || chr->actiontype == ACT_DEAD) flags |= NCF_DEAD;
 	if (chr->chrflags & CHRCFLAG_HIDDEN) flags |= NCF_HIDDEN;
@@ -204,6 +183,109 @@ static u32 netchrWriteOne(struct netbuf *dst, struct chrdata *chr)
 	}
 	if (anim->looping) flags |= NCF_LOOPING;
 	if (anim->endframe >= 0.f) flags |= NCF_ENDFRAME;
+	return flags;
+}
+
+static inline f32 netchrAbs(f32 v)
+{
+	return v < 0.f ? -v : v;
+}
+
+// On the server g_NetChrs[] holds what we last sent for each chr. Chrs whose state
+// hasn't changed in a way the client can't predict are skipped, except for a
+// periodic refresh so lost packets get corrected. Missions have dozens of guards
+// standing around, so this saves most of the bandwidth.
+#define NETCHR_REFRESH_TICKS 30
+
+static inline s32 netchrShouldSend(struct chrdata *chr)
+{
+	struct prop *prop = chr->prop;
+	if (chr->chrnum < 0 || !prop || !prop->syncid || prop->type != PROPTYPE_CHR || !chr->model || !chr->model->anim) {
+		return false;
+	}
+	if (chr->hidden & CHRHFLAG_DELETING) {
+		return false;
+	}
+
+	struct netchr *last = netchrFor(chr);
+	if (!last || !last->srvtick) {
+		return true;
+	}
+
+	const u32 since = g_NetTick - last->srvtick;
+	if (since >= NETCHR_REFRESH_TICKS) {
+		return true;
+	}
+
+	// it was moving when we last sent it: send at least once more so the
+	// client stops extrapolating when it stops
+	if (last->pos.x != last->prevpos.x || last->pos.y != last->prevpos.y || last->pos.z != last->prevpos.z) {
+		return true;
+	}
+
+	struct anim *anim = chr->model->anim;
+	const s8 wr = netchrHeldWeaponNum(chr, HAND_RIGHT);
+	const s8 wl = netchrHeldWeaponNum(chr, HAND_LEFT);
+
+	if (netchrFlags(chr) != last->flags
+			|| chr->actiontype != last->actiontype
+			|| anim->animnum != last->animnum
+			|| anim->speed != last->speed
+			|| wr != last->weapons[HAND_RIGHT] || wl != last->weapons[HAND_LEFT]
+			|| netchrAbs(prop->pos.x - last->pos.x) > 0.5f
+			|| netchrAbs(prop->pos.y - last->pos.y) > 0.5f
+			|| netchrAbs(prop->pos.z - last->pos.z) > 0.5f
+			|| netchrAbs(modelGetChrRotY(chr->model) - last->rot) > 0.01f
+			|| netchrAbs(chrGetInverseTheta(chr) - last->look) > 0.01f
+			|| netchrAbs(chr->aimendlshoulder - last->aimend[0]) > 0.01f
+			|| netchrAbs(chr->aimendrshoulder - last->aimend[1]) > 0.01f
+			|| netchrAbs(chr->aimendback - last->aimend[2]) > 0.01f
+			|| netchrAbs(chr->aimendsideback - last->aimend[3]) > 0.01f) {
+		return true;
+	}
+
+	// the client advances the frame by itself; only resend when it's off (e.g. a loop wrapped)
+	const f32 predicted = last->frame + last->speed * since;
+	if (netchrAbs(anim->frame - predicted) > 2.f) {
+		return true;
+	}
+
+	return false;
+}
+
+static void netchrRecordSent(struct chrdata *chr, u8 flags)
+{
+	struct netchr *last = netchrFor(chr);
+	if (!last) {
+		return;
+	}
+	struct anim *anim = chr->model->anim;
+	last->prevpos = last->srvtick ? last->pos : chr->prop->pos;
+	last->pos = chr->prop->pos;
+	last->rot = modelGetChrRotY(chr->model);
+	last->look = chrGetInverseTheta(chr);
+	last->aimend[0] = chr->aimendlshoulder;
+	last->aimend[1] = chr->aimendrshoulder;
+	last->aimend[2] = chr->aimendback;
+	last->aimend[3] = chr->aimendsideback;
+	last->animnum = anim->animnum;
+	last->frame = anim->frame;
+	last->speed = anim->speed;
+	last->flags = flags;
+	last->actiontype = chr->actiontype;
+	last->weapons[HAND_RIGHT] = netchrHeldWeaponNum(chr, HAND_RIGHT);
+	last->weapons[HAND_LEFT] = netchrHeldWeaponNum(chr, HAND_LEFT);
+	last->srvtick = g_NetTick ? g_NetTick : 1;
+}
+
+static u32 netchrWriteOne(struct netbuf *dst, struct chrdata *chr)
+{
+	struct prop *prop = chr->prop;
+	struct model *model = chr->model;
+	struct anim *anim = model->anim;
+	const s32 idx = chr - g_ChrSlots;
+
+	const u8 flags = netchrFlags(chr);
 
 	netbufWriteU16(dst, prop->syncid);
 	netbufWriteU8(dst, flags);
@@ -236,6 +318,8 @@ static u32 netchrWriteOne(struct netbuf *dst, struct chrdata *chr)
 		netbufWriteS16(dst, quantAim(chr->aimendback));
 		netbufWriteS16(dst, quantAim(chr->aimendsideback));
 	}
+
+	netchrRecordSent(chr, flags);
 
 	return dst->error;
 }

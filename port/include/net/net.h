@@ -142,6 +142,8 @@ s32 netStartServer(u16 port, s32 maxclients);
 s32 netStartClient(const char *addr);
 
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan);
+u32 netStatBytesSent(void);
+u32 netStatBytesReceived(void);
 
 void netChat(struct netclient *dst, const char *text);
 void netChatPrintf(struct netclient *dst, const char *fmt, ...);

@@ -42,6 +42,11 @@ Expect nothing to work right.
 * Clients can't use the alt fire mode on the FarSight and probably a couple other guns.
 * Cloaking device is not synced.
 * Most likely only Combat works properly.
-* Sims don't work in netgames.
+* Simulants are run by the host; clients see them smoothly but slightly behind the host (about one round trip).
 * Bandwidth consumption on the server is pretty large on the default settings, especially with 8 players.
  
+
+### Testing
+
+`tools/nettest/` has scripts for running a host and clients on one PC and comparing what they see.
+See `tools/nettest/README.md` for the command line flags (auto host/join/start, autopilot, state dumps, simulated lag and packet loss).

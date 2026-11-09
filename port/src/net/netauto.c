@@ -178,7 +178,9 @@ static void netAutoTickQuit(void)
 	}
 
 	if (g_NetAutoGameTicks >= (u32)g_NetAutoQuitSecs * 60) {
-		sysLogPrintf(LOG_NOTE, "NET: autoquit after %d seconds in game", g_NetAutoQuitSecs);
+		sysLogPrintf(LOG_NOTE, "NET: autoquit after %d seconds in game; sent %u bytes (%u/s), received %u bytes (%u/s)",
+			g_NetAutoQuitSecs, netStatBytesSent(), netStatBytesSent() / g_NetAutoQuitSecs,
+			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		if (g_NetDumpFile) {
 			fclose(g_NetDumpFile);
 			g_NetDumpFile = NULL;
