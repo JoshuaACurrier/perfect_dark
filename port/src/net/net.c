@@ -8,6 +8,7 @@
 #include "net/net.h"
 #include "net/netbuf.h"
 #include "net/netmsg.h"
+#include "net/netauto.h"
 #include "types.h"
 #include "constants.h"
 #include "data.h"
@@ -443,6 +444,8 @@ void netInit(void)
 		g_NetHostLatch = true;
 	}
 
+	netAutoInit();
+
 	g_NetInit = true;
 }
 
@@ -470,6 +473,7 @@ s32 netStartServer(u16 port, s32 maxclients)
 	// the server's local client is client 0
 	g_NetLocalClient = &g_NetClients[0];
 	g_NetLocalClient->state = CLSTATE_LOBBY; // local client doesn't need auth
+	netAutoApplyName();
 	netClientReadConfig(g_NetLocalClient, 0);
 
 	g_NetMode = NETMODE_SERVER;
@@ -572,6 +576,7 @@ s32 netStartClient(const char *addr)
 	}
 
 	g_NetLocalClient->state = CLSTATE_CONNECTING;
+	netAutoApplyName();
 	netClientReadConfig(g_NetLocalClient, 0);
 
 	g_NetMode = NETMODE_CLIENT;
@@ -604,6 +609,9 @@ s32 netDisconnect(void)
 	}
 
 	g_NetLocalClient = &g_NetClients[NET_MAX_CLIENTS];
+
+	// drop packets held back by the lag simulator
+	netSimClear();
 
 	// flush pending packets
 	enet_host_flush(g_NetHost);
@@ -917,6 +925,11 @@ void netEndFrame(void)
 	// send position updates
 	netFlushSendBuffers();
 
+	netAutoTick();
+
+	// release packets held back by the lag simulator, if any
+	netSimFlush();
+
 	enet_host_flush(g_NetHost);
 }
 
@@ -942,11 +955,8 @@ u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, con
 			return 0;
 		}
 
-		if (dstcl == NULL) {
-			enet_host_broadcast(g_NetHost, chan, p);
-		} else {
-			enet_peer_send(dstcl->peer, chan, p);
-		}
+		// goes straight to enet unless lag/loss simulation is on
+		netSimSend(g_NetHost, dstcl ? dstcl->peer : NULL, chan, p, reliable);
 	}
 
 	const u32 ret = buf->wp;

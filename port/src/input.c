@@ -11,6 +11,7 @@
 #include "utils.h"
 #include "system.h"
 #include "fs.h"
+#include "net/netauto.h"
 
 #if !SDL_VERSION_ATLEAST(2, 0, 14)
 // this was added in 2.0.14
@@ -799,6 +800,11 @@ s32 inputReadController(s32 idx, OSContPad *npad)
 	}
 
 	npad->button = 0;
+
+	if (netAutopilotRead(idx, npad)) {
+		// scripted input for automated net tests (--net-autopilot)
+		return 0;
+	}
 
 	if (textInput) {
 		npad->stick_x = 0;
