@@ -64,8 +64,12 @@ static const char **sysArgv;
 static inline void sysLogSetPath(const char *fname)
 {
 	// figure out where the log is and clear it
-	// try working dir first
-	snprintf(logPath, sizeof(logPath), "./%s", fname);
+	// if a path was given (--logfile), use that; otherwise try working dir first
+	if (strchr(fname, '/') || strchr(fname, '\\')) {
+		snprintf(logPath, sizeof(logPath), "%s", fname);
+	} else {
+		snprintf(logPath, sizeof(logPath), "./%s", fname);
+	}
 	FILE *f = fopen(logPath, "wb");
 	if (!f) {
 		// try home dir
@@ -89,7 +93,11 @@ void sysInit(void)
 {
 	startTick = sysGetMicroseconds();
 
-	if (sysArgCheck("--log")) {
+	const char *logfile = sysArgGetString("--logfile");
+	if (logfile && logfile[0]) {
+		// explicit log path; handy for running several instances side by side
+		sysLogSetPath(logfile);
+	} else if (sysArgCheck("--log")) {
 		sysLogSetPath(LOG_FNAME);
 	}
 
@@ -185,7 +193,7 @@ void sysLogPrintf(s32 level, const char *fmt, ...)
 	if (logPath[0]) {
 		FILE *f = fopen(logPath, "ab");
 		if (f) {
-			fprintf(f, "%s%s\n", prefix[level], logmsg);
+			fprintf(f, "%s%s\n", prefix[level & 0x0f], logmsg);
 			fclose(f);
 		}
 	}
