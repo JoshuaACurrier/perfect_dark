@@ -133,20 +133,26 @@ static s32 netParseAddr(ENetAddress *out, const char *str)
 static const char *netFormatAddr(const ENetAddress *addr)
 {
 	static char str[256];
-	char tmp[256];
+	char tmp[256] = { 0 };
 	if (addr && enet_address_get_ip(addr, tmp, sizeof(tmp) - 1) == 0) {
 		if (tmp[0]) {
-			if (strchr(tmp, ':')) {
+			// ipv4-mapped ipv6 addresses are nicer to read as plain ipv4
+			const char *ip = tmp;
+			if (!strncmp(ip, "::ffff:", 7) && strchr(ip + 7, '.')) {
+				ip += 7;
+			}
+			if (strchr(ip, ':')) {
 				// ipv6
-				snprintf(str, sizeof(str) - 1, "[%s]:%u", tmp, addr->port);
+				snprintf(str, sizeof(str) - 1, "[%s]:%u", ip, addr->port);
 			} else {
 				// ipv4
-				snprintf(str, sizeof(str) - 1, "%s:%u", tmp, addr->port);
+				snprintf(str, sizeof(str) - 1, "%s:%u", ip, addr->port);
 			}
 			return str;
 		}
 	}
-	return NULL;
+	// never return NULL: this goes straight into printf("%s"), which crashes on Windows
+	return "<unknown>";
 }
 
 static inline const char *netFormatPeerAddr(const ENetPeer *peer)
