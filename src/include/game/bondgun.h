@@ -99,6 +99,9 @@ bool bgun0f0a1a10(s32 weaponnum);
 s32 bgunGetSwitchToWeapon(s32 handnum);
 void bgunSwitchToPrevious(void);
 void bgunCycleForward(void);
+#ifndef PLATFORM_N64
+void bgunSelectSlot(s32 slot);
+#endif
 void bgunCycleBack(void);
 bool bgunHasAmmoForWeapon(s32 weaponnum);
 void bgunAutoSwitchWeapon(void);

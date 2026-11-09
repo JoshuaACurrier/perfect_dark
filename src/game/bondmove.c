@@ -2351,6 +2351,16 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 	}
 
 	if (cancycleweapons) {
+#ifndef PLATFORM_N64
+		// number keys select weapons; keyboard is always the first local player's
+		if (!g_Vars.currentplayer->isremote && optionsGetContpadNum1(g_Vars.currentplayerstats->mpindex) == 0) {
+			const s32 slot = inputGetWeaponSlotPressed();
+			if (slot > 0) {
+				bgunSelectSlot(slot);
+			}
+		}
+#endif
+
 		while (movedata.weaponbackoffset-- > 0) {
 			bgunCycleBack();
 		}

@@ -176,6 +176,9 @@ s32 inputAssignController(s32 cidx, s32 id);
 
 // vk is a value from the virtkey enum above
 s32 inputKeyPressed(u32 vk);
+
+// returns 1-10 if a weapon slot number key (1-9, 0) went down this frame, 0 otherwise
+s32 inputGetWeaponSlotPressed(void);
 s32 inputKeyJustPressed(u32 vk);
 
 // idx is controller index, contbtn is one of the CONT_ constants

@@ -5739,6 +5739,59 @@ void bgunCycleForward(void)
 	}
 }
 
+#ifndef PLATFORM_N64
+/**
+ * Select the weapon in the given slot (1-based), counting weapons in the
+ * order the player cycles through them. Selecting the slot of the weapon
+ * that's already equipped toggles dual wielding if possible.
+ */
+void bgunSelectSlot(s32 slot)
+{
+	struct player *player = g_Vars.currentplayer;
+	s32 weaponnum1 = WEAPON_UNARMED;
+	s32 weaponnum2 = WEAPON_NONE;
+	s32 prev = WEAPON_UNARMED;
+	s32 found = -1;
+	s32 n = 0;
+
+	if (g_Vars.tickmode == TICKMODE_CUTSCENE || slot <= 0) {
+		return;
+	}
+
+	// walk the cycle from unarmed, counting each distinct weapon once
+	for (s32 i = 0; i < 100 && found < 0; ++i) {
+		invChooseCycleForwardWeapon(&weaponnum1, &weaponnum2, false);
+
+		if (weaponnum1 == WEAPON_UNARMED) {
+			break; // wrapped around
+		}
+
+		if (weaponnum1 != prev) {
+			prev = weaponnum1;
+			if (++n == slot) {
+				found = weaponnum1;
+			}
+		}
+	}
+
+
+	if (found < 0) {
+		return;
+	}
+
+	const s32 current = bgunGetSwitchToWeapon(HAND_RIGHT);
+	if (found == current && invHasDoubleWeaponIncAllGuns(found, found)) {
+		// same as cycling from the single to the dual version: just flip the flag
+		player->gunctrl.dualwielding = !player->gunctrl.dualwielding;
+		bgunEquipWeapon(found);
+		return;
+	}
+
+	player->gunctrl.dualwielding = false;
+	bgunEquipWeapon(found);
+}
+#endif
+
 void bgunCycleBack(void)
 {
 	s32 weaponnum1;

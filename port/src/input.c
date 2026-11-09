@@ -96,6 +96,11 @@ static s32 lastKey = 0;
 static char lastChar = 0;
 static s32 textInput = 0;
 
+// number keys 1-9, 0 select weapon slots 1-10
+static s32 weaponNumKeys = 1;
+static s32 weaponSlotPressed = 0;
+static u8 weaponSlotHeld[10];
+
 static char *clipboardText = NULL;
 
 static const char *ckNames[CK_TOTAL_COUNT] = {
@@ -924,9 +929,36 @@ static inline void inputUpdateMouse(void)
 	}
 }
 
+static inline void inputUpdateWeaponSlots(void)
+{
+	weaponSlotPressed = 0;
+
+	if (!weaponNumKeys || textInput) {
+		memset(weaponSlotHeld, 0, sizeof(weaponSlotHeld));
+		return;
+	}
+
+	const u8 *keys = SDL_GetKeyboardState(NULL);
+	for (s32 i = 0; i < 10; ++i) {
+		const s32 sc = (i == 9) ? SDL_SCANCODE_0 : (SDL_SCANCODE_1 + i);
+		const u8 down = keys[sc] != 0;
+		if (down && !weaponSlotHeld[i] && !weaponSlotPressed) {
+			weaponSlotPressed = i + 1;
+		}
+		weaponSlotHeld[i] = down;
+	}
+}
+
+s32 inputGetWeaponSlotPressed(void)
+{
+	return weaponSlotPressed;
+}
+
 void inputUpdate(void)
 {
 	SDL_GameControllerUpdate();
+
+	inputUpdateWeaponSlots();
 
 	if (mouseEnabled) {
 		inputUpdateMouse();
@@ -1522,6 +1554,7 @@ u32 inputGetKeyModState(void)
 PD_CONSTRUCTOR static void inputConfigInit(void)
 {
 	configRegisterInt("Input.MouseEnabled", &mouseEnabled, 0, 1);
+	configRegisterInt("Input.WeaponNumberKeys", &weaponNumKeys, 0, 1);
 	configRegisterInt("Input.MouseLockMode", &mouseLockMode, MLOCK_OFF, MLOCK_AUTO);
 	configRegisterFloat("Input.MouseSpeedX", &mouseSensX, -30.f, 30.f);
 	configRegisterFloat("Input.MouseSpeedY", &mouseSensY, -30.f, 30.f);
