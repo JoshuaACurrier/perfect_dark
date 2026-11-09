@@ -17,7 +17,7 @@
 #ifndef PLATFORM_N64
 #include "video.h"
 #include "game/gfxmemory.h"
-#include "game/game_13c510.h"
+#include "game/artifact.h"
 #include "game/player.h"
 #endif
 
@@ -2518,11 +2518,11 @@ void skyCreateSunArtifact(struct artifact *artifact, s32 x, s32 y)
 		sunpos.x = env->suns[i].pos[0];
 		sunpos.y = env->suns[i].pos[1];
 		sunpos.z = env->suns[i].pos[2];
-		artifact->unk02 = artifactTestLos(&sunpos, &zero, x, y) * 0xfffc;
+		artifact->visiblelos = artifactTestLos(&sunpos, &zero, x, y) * 0xfffc;
 #endif
-		artifact->unk08 = &g_ZbufPtr1[(s32)camGetScreenWidth() * y + x];
-		artifact->unk0c.u16_2 = x;
-		artifact->unk0c.u16_1 = y;
+		artifact->zbufptr = &g_ZbufPtr1[(s32)camGetScreenWidth() * y + x];
+		artifact->screenx = x;
+		artifact->screeny = y;
 		artifact->type = ARTIFACTTYPE_CIRCLE;
 	}
 }
@@ -2533,7 +2533,13 @@ f32 skyGetArtifactGroupIntensityFrac(struct artifact *artifacts)
 	s32 i;
 
 	for (i = 0; i < 8; i++) {
-		if (artifacts[i].type == ARTIFACTTYPE_CIRCLE && artifacts[i].unk02 == 0xfffc) {
+		const u16 test =
+#ifdef PLATFORM_N64
+			artifacts[i].actualdepth;
+#else
+			artifacts[i].visiblelos;
+#endif
+		if (artifacts[i].type == ARTIFACTTYPE_CIRCLE && test == 0xfffc) {
 			sum += 0.125f;
 		}
 	}
@@ -3068,6 +3074,13 @@ Gfx *skyRenderArtifacts(Gfx *gdl)
 
 void skySetOverexposure(s32 r, s32 g, s32 b)
 {
+#ifndef PLATFORM_N64
+	const f32 scale = videoGetOverexposureScale();
+	r *= scale;
+	g *= scale;
+	b *= scale;
+#endif
+
 	g_Vars.currentplayer->overexposurered = sqrtf(g_Vars.currentplayer->overexposurered * g_Vars.currentplayer->overexposurered + r * r);
 	g_Vars.currentplayer->overexposuregreen = sqrtf(g_Vars.currentplayer->overexposuregreen * g_Vars.currentplayer->overexposuregreen + g * g);
 	g_Vars.currentplayer->overexposureblue = sqrtf(g_Vars.currentplayer->overexposureblue * g_Vars.currentplayer->overexposureblue + b * b);

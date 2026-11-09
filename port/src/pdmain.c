@@ -468,6 +468,9 @@ void mainLoop(void)
 		}
 
 		if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+			if (g_MpSetup.chrslots & MP_BOTSLOTS_MASK) {
+				g_MpSetup.storedbotbits = g_MpSetup.chrslots & MP_BOTSLOTS_MASK;
+			}
 #ifdef PLATFORM_N64
 			g_MpSetup.chrslots = 0x03;
 #else

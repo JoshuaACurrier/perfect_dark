@@ -75,7 +75,7 @@ static s32 connectedMask = 0;
 static s32 numJoysticks = 0;
 
 static s32 useHIDAPI = 1;
-static s32 useRawInput = 1;
+static s32 useRawInput = 0;
 
 static s32 mouseEnabled = 1;
 static s32 mouseX, mouseY;
@@ -195,7 +195,7 @@ void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
 		{ CK_RTRIG,         VK_MOUSE_RIGHT,      SDL_SCANCODE_Z      },
 		{ CK_LTRIG,         SDL_SCANCODE_F,      SDL_SCANCODE_X      },
 		{ CK_ZTRIG,         VK_MOUSE_LEFT,       SDL_SCANCODE_SPACE  },
-		{ CK_START,         SDL_SCANCODE_RETURN, SDL_SCANCODE_TAB    },
+		{ CK_START,         SDL_SCANCODE_TAB,    0                   },
 		{ CK_DPAD_D,        SDL_SCANCODE_Q,      VK_MOUSE_MIDDLE     },
 		{ CK_DPAD_U,        0,                   0                   },
 		{ CK_Y,             VK_MOUSE_WHEEL_DN,   0                   },
@@ -209,7 +209,9 @@ void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
 		{ CK_STICK_YNEG,    SDL_SCANCODE_DOWN,   0                   },
 		{ CK_STICK_YPOS,    SDL_SCANCODE_UP,     0                   },
 		{ CK_4000,          SDL_SCANCODE_LSHIFT, 0                   },
-		{ CK_2000,          SDL_SCANCODE_LCTRL,  0                   }
+		{ CK_2000,          SDL_SCANCODE_LCTRL,  0                   },
+		{ CK_ACCEPT,        SDL_SCANCODE_RETURN, SDL_SCANCODE_E      },
+		{ CK_CANCEL,        VK_MOUSE_RIGHT,      0                   },
 	};
 
 	static const u32 pcjoybinds[][2] = {
@@ -693,6 +695,7 @@ s32 inputInit(void)
 		// the two hints below enable Rumble and Motion Sensor for PS4/5 pads connected via bluetooth
 		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
 		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
+		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");
 #endif
 #if SDL_VERSION_ATLEAST(2, 23, 2)
 		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_COMBINE_JOY_CONS, "1");
@@ -703,10 +706,18 @@ s32 inputInit(void)
 #if SDL_VERSION_ATLEAST(2, 26, 0)
 		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_WII, "1");
 #endif
+#if SDL_VERSION_ATLEAST(2, 30, 0)
+		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, "1");
+#endif
 	}
 	if (useRawInput) {
 		SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "1");
+#ifdef SDL_HINT_JOYSTICK_RAWINPUT_CORRELATE_XINPUT
 		SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT_CORRELATE_XINPUT, "1");
+#elif defined(SDL_HINT_JOYSTICK_HIDAPI_CORRELATE_XINPUT)
+		// old name for SDL_HINT_JOYSTICK_RAWINPUT_CORRELATE_XINPUT before SDL2.0.16
+		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_CORRELATE_XINPUT, "1");
+#endif
 	}
 
 	if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC)) {
@@ -744,6 +755,9 @@ s32 inputInit(void)
 	}
 
 	inputLoadBinds();
+
+	// Explicitly stop text input to prevent key events being swallowed on certain Wayland systems
+	inputStopTextInput();
 
 	return connectedMask;
 }
@@ -1241,26 +1255,24 @@ void inputMouseGetRawDelta(s32 *dx, s32 *dy)
 
 void inputMouseGetScaledDelta(f32* dx, f32* dy)
 {
-		f32 mdx = 0.f, mdy = 0.f;
-
-		if (mouseLocked) {
-				mdx = mouseSensX * ((f32)mouseDX / 3.5f) * 0.022f;
-				mdy = mouseSensY * ((f32)mouseDY / 3.5f) * 0.022f;
-		}
-		if (dx) *dx = mdx;
-		if (dy) *dy = mdy;
+	f32 mdx = 0.f, mdy = 0.f;
+	if (mouseLocked) {
+		mdx = mouseDX * (0.022f / 3.5f) * mouseSensX;
+		mdy = mouseDY * (0.022f / 3.5f) * mouseSensY;
+	}
+	if (dx) *dx = mdx;
+	if (dy) *dy = mdy;
 }
 
 void inputMouseGetAbsScaledDelta(f32* dx, f32* dy)
 {
-		f32 mdx = 0.f, mdy = 0.f;
-
-		if (mouseLocked) {
-				mdx = fabsf(mouseSensX) * ((f32)mouseDX / 3.5f) * 0.022f;
-				mdy = fabsf(mouseSensY) * ((f32)mouseDY / 3.5f) * 0.022f;
-		}
-		if (dx) *dx = mdx;
-		if (dy) *dy = mdy;
+	f32 mdx = 0.f, mdy = 0.f;
+	if (mouseLocked) {
+		mdx = mouseDX * (0.022f / 3.5f) * fabsf(mouseSensX);
+		mdy = mouseDY * (0.022f / 3.5f) * fabsf(mouseSensY);
+	}
+	if (dx) *dx = mdx;
+	if (dy) *dy = mdy;
 }
 
 void inputMouseGetSpeed(f32 *x, f32 *y)
@@ -1453,10 +1465,6 @@ s32 inputTextHandler(char *out, const u32 outSize, s32 *curCol, s32 oskCharsOnly
 		} else {
 			out[0] = '\0';
 		}
-	} else if (key == VK_RETURN) {
-		if (out[0] && *curCol) {
-			return 1;
-		}
 	} else if (key == VK_ESCAPE) {
 		return -1;
 	}
@@ -1509,8 +1517,8 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 {
 	configRegisterInt("Input.MouseEnabled", &mouseEnabled, 0, 1);
 	configRegisterInt("Input.MouseLockMode", &mouseLockMode, MLOCK_OFF, MLOCK_AUTO);
-	configRegisterFloat("Input.MouseSpeedX", &mouseSensX, -10.f, 10.f);
-	configRegisterFloat("Input.MouseSpeedY", &mouseSensY, -10.f, 10.f);
+	configRegisterFloat("Input.MouseSpeedX", &mouseSensX, -30.f, 30.f);
+	configRegisterFloat("Input.MouseSpeedY", &mouseSensY, -30.f, 30.f);
 	configRegisterInt("Input.FakeGamepads", &fakeControllers, 0, 4);
 	configRegisterInt("Input.FirstGamepadNum", &firstController, 0, 3);
 	configRegisterInt("Input.UseHIDAPI", &useHIDAPI, 0, 1);

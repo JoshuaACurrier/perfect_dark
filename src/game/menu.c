@@ -1929,6 +1929,10 @@ Gfx *menuRenderModel(Gfx *gdl, struct menumodel *menumodel, s32 modeltype)
 					totalfilelen += 0x4000;
 #endif
 
+#ifndef PLATFORM_N64
+					videoFreeCachedTextures(menumodel->allocstart, menumodel->allocstart + menumodel->alloclen);
+#endif
+
 					texInitPool(&texpool, menumodel->allocstart + totalfilelen, menumodel->alloclen - totalfilelen);
 
 					menumodel->headnum = headnum;
@@ -1960,6 +1964,10 @@ Gfx *menuRenderModel(Gfx *gdl, struct menumodel *menumodel, s32 modeltype)
 				} else {
 					totalfilelen = ALIGN64(fileGetInflatedSize(menumodel->newparams, LOADTYPE_MODEL)) + 0x4000;
 					if (1);
+
+#ifndef PLATFORM_N64
+					videoFreeCachedTextures(menumodel->allocstart, menumodel->allocstart + menumodel->alloclen);
+#endif
 
 					texInitPool(&texpool, &menumodel->allocstart[(u32)totalfilelen], menumodel->alloclen - totalfilelen);
 
@@ -3606,8 +3614,8 @@ void func0f0f820c(struct menudialogdef *dialogdef, s32 root)
 
 	g_MpPlayerNum = prevplayernum;
 
-	g_MenuData.unk008 = root;
-	g_MenuData.unk00c = dialogdef;
+	g_MenuData.prevmenuroot = root;
+	g_MenuData.prevmenudialog = dialogdef;
 }
 
 void menuSetBackground(s32 bg)
@@ -3681,7 +3689,7 @@ void menuPushRootDialog(struct menudialogdef *dialogdef, s32 root)
 	g_Menus[g_MpPlayerNum].unk820 = 1;
 
 	g_MenuData.root = root;
-	g_MenuData.unk008 = -1;
+	g_MenuData.prevmenuroot = -1;
 	g_MenuData.unk5d5_02 = false;
 
 	if (root == MENUROOT_MAINMENU
@@ -4003,13 +4011,13 @@ void menuReset(void)
 	}
 
 	g_MenuData.unk668 = -1;
-	g_MenuData.unk00c = 0;
-	g_MenuData.unk008 = -1;
+	g_MenuData.prevmenudialog = 0;
+	g_MenuData.prevmenuroot = -1;
 	g_MenuData.count = 0;
 	g_MenuData.root = 0;
 	g_MenuData.unk010 = 0;
 	g_MenuData.bg = 0;
-	g_MenuData.unk5d5_06 = false;
+	g_MenuData.isdialogopen = false;
 	g_MenuData.nextbg = 255;
 	g_MenuData.bannernum = -1;
 
@@ -4604,6 +4612,9 @@ void dialogTick(struct menudialog *dialog, struct menuinputs *inputs, u32 tickfl
 		s32 adjustment = (s32)(inputs->yaxis * g_Vars.diffframe60freal / 20) - (s32)(inputs->updownheld * g_Vars.diffframe60freal);
 #else
 		s32 adjustment = inputs->yaxis * g_Vars.diffframe60 / 20 - inputs->updownheld * g_Vars.diffframe60;
+#endif
+#ifndef PLATFORM_N64
+		adjustment -= inputs->mousescroll * (LINEHEIGHT + 1);
 #endif
 		dialog->dstscroll += adjustment;
 
