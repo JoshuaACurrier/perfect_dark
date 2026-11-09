@@ -9964,6 +9964,9 @@ void chrTickShoot(struct chrdata *chr, s32 handnum)
 		RoomNum hitrooms[8];
 		bool queriedhitrooms;
 		s32 tickspershot;
+#ifndef PLATFORM_N64
+		bool nethitsurface = false; // for SVC_CHR_SHOT: show sparks where the shot landed
+#endif
 
 		gset = weapon->gset;
 		attackflags = ATTACKFLAG_AIMATTARGET;
@@ -10457,6 +10460,9 @@ void chrTickShoot(struct chrdata *chr, s32 handnum)
 								func0f065e74(&gunpos, gunrooms, &hitpos, hitrooms);
 								queriedhitrooms = true;
 
+#ifndef PLATFORM_N64
+								nethitsurface = true;
+#endif
 								if (chrIsUsingPaintball(chr)) {
 									sparksCreate(hitrooms[0], hitprop, &hitpos, NULL, NULL, SPARKTYPE_PAINT);
 								} else {
@@ -10471,6 +10477,9 @@ void chrTickShoot(struct chrdata *chr, s32 handnum)
 								}
 							}
 						} else if (hitsomething) {
+#ifndef PLATFORM_N64
+							nethitsurface = true;
+#endif
 							// Hit the background
 							func0f065e74(&gunpos, gunrooms, &hitpos, hitrooms);
 							queriedhitrooms = true;
@@ -10551,6 +10560,13 @@ void chrTickShoot(struct chrdata *chr, s32 handnum)
 		osSyncPrintf("off");
 
 		chrUpdateFireslot(chr, handnum, firingthisframe, firingthisframe && makebeam, &gunpos, &hitpos);
+
+#ifndef PLATFORM_N64
+		if (firingthisframe && g_NetMode == NETMODE_SERVER) {
+			netmsgSvcChrShotWrite(&g_NetMsg, chr, handnum, makebeam, &gunpos, &hitpos,
+				nethitsurface, chrIsUsingPaintball(chr));
+		}
+#endif
 
 		if (isaibot) {
 			if (firingthisframe) {

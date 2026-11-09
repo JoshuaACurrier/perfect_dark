@@ -51,6 +51,7 @@
 #include "video.h"
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "net/netchr.h"
 #endif
 
 void rng2SetSeed(u32 seed);
@@ -2439,7 +2440,14 @@ s32 chrTick(struct prop *prop)
 						modelSetAnimation(model, g_SelectedAnimNum, 0, 0.0f, 0.5f, 0.0f);
 					}
 				}
-			} else {
+			}
+#ifndef PLATFORM_N64
+			else if (g_NetMode == NETMODE_CLIENT && prop->type == PROPTYPE_CHR) {
+				// the server runs the AI, we just show what it tells us
+				netchrPuppetTick(chr);
+			}
+#endif
+			else {
 				chraTick(chr);
 
 				if (chr->model == NULL) {

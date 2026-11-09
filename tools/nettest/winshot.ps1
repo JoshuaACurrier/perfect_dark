@@ -24,6 +24,8 @@ $i = 0
 foreach ($p in Get-Process -Name $Name -ErrorAction SilentlyContinue) {
 	$h = $p.MainWindowHandle
 	if ($h -eq [IntPtr]::Zero) { continue }
+	# PrintWindow blocks forever on a hung window
+	if (-not $p.Responding) { Write-Output ("HUNG: pid {0}" -f $p.Id); continue }
 	$r = New-Object WinShot+RECT
 	[WinShot]::GetClientRect($h, [ref]$r) | Out-Null
 	$w = $r.R - $r.L; $hh = $r.B - $r.T

@@ -48,13 +48,15 @@ def main():
 
     total_bad = 0
     total = 0
-    print(f"{'syncid':>6} {'type':>7} {'samples':>7} {'meanerr':>8} {'maxerr':>8} {'%off':>6} {'deadmis':>7} {'actmis%':>7}")
+    print(f"{'syncid':>6} {'type':>7} {'samples':>7} {'meanerr':>8} {'maxerr':>8} {'%off':>6} {'deadmis':>7} {'actmis%':>7} {'anim%':>6} {'wpn%':>6}")
     for sid in sorted(host):
         hs = host[sid]
         cs = client.get(sid, {})
         errs = []
         deadmis = 0
         actmis = 0
+        animmis = 0
+        wpnmis = 0
         ptype = "?"
         for tick, h in sorted(hs.items()):
             ptype = TYPES.get(int(h["type"]), h["type"])
@@ -68,6 +70,10 @@ def main():
                 deadmis += 1
             if h["act"] != c["act"]:
                 actmis += 1
+            if h["anim"] != c["anim"]:
+                animmis += 1
+            if h["weapon"] != c["weapon"]:
+                wpnmis += 1
             if verbose and d > POS_OK:
                 print(f"   tick {tick}: sid {sid} host ({h['x']},{h['y']},{h['z']}) act {h['act']} "
                       f"client ({c['x']},{c['y']},{c['z']}) act {c['act']} err {d:.1f}")
@@ -78,7 +84,8 @@ def main():
         total_bad += off
         total += len(errs)
         print(f"{sid:>6} {ptype:>7} {len(errs):>7} {sum(errs)/len(errs):>8.1f} {max(errs):>8.1f} "
-              f"{100*off/len(errs):>5.1f}% {deadmis:>7} {100*actmis/len(errs):>6.1f}%")
+              f"{100*off/len(errs):>5.1f}% {deadmis:>7} {100*actmis/len(errs):>6.1f}% "
+              f"{100*animmis/len(errs):>5.1f}% {100*wpnmis/len(errs):>5.1f}%")
 
     if total:
         print(f"\noverall: {100*total_bad/total:.1f}% of samples more than {POS_OK} units off")

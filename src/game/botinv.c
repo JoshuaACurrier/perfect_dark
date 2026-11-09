@@ -17,6 +17,10 @@
 #include "lib/rng.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netmsg.h"
+#endif
 
 struct aibotweaponpreference g_AibotWeaponPreferences[] = {
 	//                             haspriammogoal
@@ -1146,6 +1150,13 @@ void botinvDrop(struct chrdata *chr, s32 weaponnum, u8 dropall)
 			continue;
 		}
 
+#ifndef PLATFORM_N64
+		// the server creates the dropped weapons and tells us about them
+		if (g_NetMode == NETMODE_CLIENT) {
+			continue;
+		}
+#endif
+
 		if ((item->type == INVITEMTYPE_WEAP || item->type == INVITEMTYPE_DUAL)
 				&& (dropall || weaponnum == item->type_weap.weapon1)) {
 			if (!weaponHasFlag(item->type_weap.weapon1, WEAPONFLAG_UNDROPPABLE)
@@ -1164,6 +1175,13 @@ void botinvDrop(struct chrdata *chr, s32 weaponnum, u8 dropall)
 						if (item->type_weap.weapon1 == WEAPON_BRIEFCASE2) {
 							scenarioHandleDroppedToken(chr, prop);
 						}
+
+#ifndef PLATFORM_N64
+						if (g_NetMode == NETMODE_SERVER) {
+							netmsgSvcPropSpawnWrite(&g_NetMsgRel, prop);
+							netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+						}
+#endif
 					}
 				}
 			}

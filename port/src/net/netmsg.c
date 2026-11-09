@@ -433,6 +433,19 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 	netbufWriteU32(dst, g_MpSetup.options);
 	netbufWriteData(dst, g_MpSetup.weapons, sizeof(g_MpSetup.weapons));
 
+	// simulants; their slots are in the high bits of chrslots
+	for (s32 i = 0; i < MAX_BOTS; ++i) {
+		if (g_MpSetup.chrslots & (1 << (i + MAX_PLAYERS))) {
+			const struct mpbotconfig *bot = &g_BotConfigsArray[i];
+			netbufWriteU8(dst, bot->type);
+			netbufWriteU8(dst, bot->difficulty);
+			netbufWriteU8(dst, bot->base.mpheadnum);
+			netbufWriteU8(dst, bot->base.mpbodynum);
+			netbufWriteU8(dst, bot->base.team);
+			netbufWriteStr(dst, bot->base.name);
+		}
+	}
+
 	// who the fuck is in the game
 	netbufWriteU8(dst, g_NetNumClients);
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
@@ -489,6 +502,23 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 	g_MpSetup.options = netbufReadU32(src);
 	netbufReadData(src, g_MpSetup.weapons, sizeof(g_MpSetup.weapons));
 	strcpy(g_MpSetup.name, "server");
+
+	// simulants
+	for (s32 i = 0; i < MAX_BOTS; ++i) {
+		if (g_MpSetup.chrslots & (1 << (i + MAX_PLAYERS))) {
+			struct mpbotconfig *bot = &g_BotConfigsArray[i];
+			bot->type = netbufReadU8(src);
+			bot->difficulty = netbufReadU8(src);
+			bot->base.mpheadnum = netbufReadU8(src);
+			bot->base.mpbodynum = netbufReadU8(src);
+			bot->base.team = netbufReadU8(src);
+			const char *name = netbufReadStr(src);
+			if (name) {
+				strncpy(bot->base.name, name, sizeof(bot->base.name) - 1);
+				bot->base.name[sizeof(bot->base.name) - 1] = '\0';
+			}
+		}
+	}
 
 	if (src->error) {
 		sysLogPrintf(LOG_WARNING, "NET: malformed SVC_STAGE from server");

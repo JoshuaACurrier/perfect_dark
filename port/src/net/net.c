@@ -9,6 +9,7 @@
 #include "net/netbuf.h"
 #include "net/netmsg.h"
 #include "net/netauto.h"
+#include "net/netchr.h"
 #include "types.h"
 #include "constants.h"
 #include "data.h"
@@ -779,6 +780,8 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PROP_LIFT: rc = netmsgSvcPropLiftRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
+			case SVC_CHR_MOVE: rc = netmsgSvcChrMoveRead(&cl->in, cl); break;
+			case SVC_CHR_SHOT: rc = netmsgSvcChrShotRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -917,6 +920,8 @@ void netEndFrame(void)
 				}
 			}
 			if (g_NetNextUpdate <= g_NetTick) {
+				// chr snapshots go out at the same rate as player updates
+				netchrServerSend();
 				g_NetNextUpdate = g_NetTick + g_NetServerUpdateRate;
 			}
 		}
@@ -1020,6 +1025,9 @@ void netSyncIdsAllocate(void)
 {
 	// allocate sync ids sequentially for all active or paused props
 	g_NetNextSyncId = 1;
+
+	// chr state is per stage
+	netchrReset();
 
 	// don't allocate anything else if we're in lobby
 	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {

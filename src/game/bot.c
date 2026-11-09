@@ -28,6 +28,10 @@
 #include "bss.h"
 #include "lib/collision.h"
 #include "lib/model.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netchr.h"
+#endif
 #include "lib/rng.h"
 #include "lib/mtx.h"
 #include "lib/anim.h"
@@ -248,6 +252,11 @@ void botSpawn(struct chrdata *chr, u8 respawning)
 	}
 
 	if (aibot) {
+#ifndef PLATFORM_N64
+		if (respawning) {
+			netchrOnRespawn(chr);
+		}
+#endif
 		botReset(chr, respawning);
 		splatResetChr(chr);
 		thing = scenarioChooseSpawnLocation(chr->radius, &pos, rooms, chr->prop);
@@ -890,6 +899,13 @@ s32 botTick(struct prop *prop)
 	f32 newangle;
 
 	updateable = (prop->flags & PROPFLAG_NOTYETTICKED) && g_Vars.lvupdate240;
+
+#ifndef PLATFORM_N64
+	if (aibot && g_NetMode == NETMODE_CLIENT) {
+		// simulants are puppets on clients, see netchrPuppetTick
+		return chrTick(prop);
+	}
+#endif
 
 	if (aibot) {
 		if (updateable && g_Vars.lvframe60 >= 145) {
