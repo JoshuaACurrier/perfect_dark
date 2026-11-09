@@ -18,6 +18,10 @@
 #include "lib/mema.h"
 #include "lib/str.h"
 #include "data.h"
+#ifndef PLATFORM_N64
+#include <stdio.h>
+#include "system.h"
+#endif
 #include "types.h"
 #include "mpsetups.h"
 
@@ -2514,6 +2518,10 @@ MenuItemHandlerResult filemgrAgentNameKeyboardMenuHandler(s32 operation, struct 
 	return 0;
 }
 
+#ifndef PLATFORM_N64
+static bool g_FileAutoCreated = false;
+#endif
+
 MenuItemHandlerResult filemgrChooseAgentListMenuHandler(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	s32 x;
@@ -2579,6 +2587,18 @@ MenuItemHandlerResult filemgrChooseAgentListMenuHandler(s32 operation, struct me
 		}
 
 #ifndef PLATFORM_N64
+		if (g_FileAutoSelect >= 0 && g_FileLists[0] && g_FileLists[0]->numfiles == 0
+				&& g_FileLists[0]->spacesfree[SAVEDEVICE_GAMEPAK] > 0 && !g_FileAutoCreated) {
+			// --profile was given but there are no agents yet (fresh save dir):
+			// create one with default settings so automated sessions don't get stuck here,
+			// the next list update will then pick it up below
+			gamefileLoadDefaults(&g_GameFile);
+			const char *name = sysArgGetString("--profile-name");
+			snprintf(g_GameFile.name, sizeof(g_GameFile.name), "%s", (name && name[0]) ? name : "Agent");
+			g_FileAutoCreated = true;
+			filemgrSaveGameToDevice(SAVEDEVICE_GAMEPAK);
+		}
+
 		if (g_FileAutoSelect >= 0 && g_FileLists[0] && g_FileLists[0]->numfiles > 0) {
 			const u32 tmp = data->list.value;
 			data->list.value = g_FileAutoSelect;
