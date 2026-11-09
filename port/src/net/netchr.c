@@ -509,6 +509,11 @@ static void netchrApplyWeapons(struct chrdata *chr, struct netchr *nc)
 		if (want == have) {
 			continue;
 		}
+		if (want < 0 && chr->weapons_held[hand] && chr->weapons_held[hand]->syncid) {
+			// a synced prop (e.g. a guard's gun from the level setup) is about to be
+			// dropped by the death/disarm code; deleting it here would lose it
+			continue;
+		}
 		if (chr->weapons_held[hand]) {
 			if (chr->weapons_held[hand]->obj) {
 				chr->weapons_held[hand]->obj->hidden |= OBJHFLAG_DELETING;

@@ -1049,25 +1049,31 @@ void netSyncIdsAllocate(void)
 		return;
 	}
 
-	// iterate active props first
-	struct prop *prop = g_Vars.activeprops;
-	while (prop && prop != g_Vars.pausedprops) {
-		prop->syncid = prop - g_Vars.props + 1;
-		if (prop->syncid > g_NetNextSyncId) {
-			g_NetNextSyncId = prop->syncid;
-		}
-		prop = prop->next;
+	// Every prop that exists at this point gets syncid = index + 1. Both ends ran the
+	// same setup, so this matches up, including props that aren't in the active or
+	// paused lists, like guns held by guards (needed once those get dropped).
+	u8 *isfree = calloc(g_Vars.maxprops, 1);
+	if (!isfree) {
+		sysLogPrintf(LOG_ERROR, "NET: out of memory allocating sync ids");
+		return;
 	}
+	// the tail of the free list has an uninitialised next pointer (see varsReset),
+	// so stop as soon as we leave the props array
+	struct prop *fp = g_Vars.freeprops;
+	for (s32 n = 0; fp && n < g_Vars.maxprops; ++n) {
+		if (fp < g_Vars.props || fp >= g_Vars.props + g_Vars.maxprops) {
+			break;
+		}
+		isfree[fp - g_Vars.props] = 1;
+		fp = fp->next;
+	}
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		g_Vars.props[i].syncid = isfree[i] ? 0 : (i + 1);
+	}
+	free(isfree);
 
-	// then the paused props
-	prop = g_Vars.pausedprops;
-	while (prop) {
-		prop->syncid = prop - g_Vars.props + 1;
-		if (prop->syncid > g_NetNextSyncId) {
-			g_NetNextSyncId = prop->syncid;
-		}
-		prop = prop->next;
-	}
+	// props spawned from now on get ids past all the index based ones
+	g_NetNextSyncId = g_Vars.maxprops + 1;
 
 	// HACK: when we're a client, we'll need to swap our player and server player's props
 	// because of what we do in netPlayersAllocate
