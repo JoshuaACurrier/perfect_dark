@@ -292,13 +292,19 @@ void mpReset(void)
 	{
 		struct mpplayerconfig tmp;
 
-		tmp = g_PlayerConfigsArray[MAX_PLAYERS];
-		g_PlayerConfigsArray[MAX_PLAYERS] = g_PlayerConfigsArray[0];
-		g_PlayerConfigsArray[0] = tmp;
+#ifndef PLATFORM_N64
+		// in net games the player configs were already set up by netPlayersAllocate
+		if (!g_NetMode)
+#endif
+		{
+			tmp = g_PlayerConfigsArray[MAX_PLAYERS];
+			g_PlayerConfigsArray[MAX_PLAYERS] = g_PlayerConfigsArray[0];
+			g_PlayerConfigsArray[0] = tmp;
 
-		tmp = g_PlayerConfigsArray[MAX_PLAYERS + 1];
-		g_PlayerConfigsArray[MAX_PLAYERS + 1] = g_PlayerConfigsArray[1];
-		g_PlayerConfigsArray[1] = tmp;
+			tmp = g_PlayerConfigsArray[MAX_PLAYERS + 1];
+			g_PlayerConfigsArray[MAX_PLAYERS + 1] = g_PlayerConfigsArray[1];
+			g_PlayerConfigsArray[1] = tmp;
+		}
 
 		// Player index 0
 		g_Vars.playerstats[0].mpindex = 0;

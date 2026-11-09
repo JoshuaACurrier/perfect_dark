@@ -7,6 +7,8 @@
 //   --net-sims N             (host) number of simulants in the auto-started match
 //   --net-simdiff N          (host) simulant profile: 0 meat, 1 easy, 2 normal, 3 hard, 4 perfect, 5 dark
 //   --net-scenario N         (host) MPSCENARIO_*
+//   --net-coop STAGE         (host) start a co-op mission on STAGE (e.g. 0x30 Defection) instead of Combat Sim
+//   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
 //   --net-autopilot [SEED]   drive the local player with scripted input
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
@@ -38,6 +40,8 @@ static s32 g_NetAutoStage = -1;
 static s32 g_NetAutoSims = -1;
 static s32 g_NetAutoSimDiff = BOTDIFF_NORMAL;
 static s32 g_NetAutoScenario = -1;
+static s32 g_NetAutoCoopStage = -1;
+static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
 static const char *g_NetAutoName = NULL;
 
@@ -64,6 +68,8 @@ void netAutoInit(void)
 	g_NetAutoSims = sysArgGetInt("--net-sims", -1);
 	g_NetAutoSimDiff = sysArgGetInt("--net-simdiff", BOTDIFF_NORMAL);
 	g_NetAutoScenario = sysArgGetInt("--net-scenario", -1);
+	g_NetAutoCoopStage = sysArgGetInt("--net-coop", -1);
+	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
 
 	if (g_NetAutoSims > MAX_BOTS) {
@@ -109,8 +115,35 @@ void netAutoApplyName(void)
 
 /* autostart */
 
+extern MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *item, union handlerdata *data);
+
+static void netAutoStartCoop(void)
+{
+	g_MissionConfig.iscoop = true;
+	g_MissionConfig.isanti = false;
+	g_MissionConfig.pdmode = false;
+	g_MissionConfig.stagenum = g_NetAutoCoopStage;
+	g_MissionConfig.difficulty = (g_NetAutoDifficulty >= DIFF_A && g_NetAutoDifficulty <= DIFF_PA) ? g_NetAutoDifficulty : DIFF_A;
+	g_MissionConfig.stageindex = 0;
+	for (s32 i = 0; i < NUM_SOLOSTAGES; ++i) {
+		if (g_SoloStages[i].stagenum == (u32)g_NetAutoCoopStage) {
+			g_MissionConfig.stageindex = i;
+			break;
+		}
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: autostart: co-op on stage 0x%02x, difficulty %d", g_MissionConfig.stagenum, g_MissionConfig.difficulty);
+
+	menuhandlerAcceptMission(MENUOP_SET, NULL, NULL);
+}
+
 static void netAutoStartMatch(void)
 {
+	if (g_NetAutoCoopStage > 0) {
+		netAutoStartCoop();
+		return;
+	}
+
 	if (g_NetAutoStage > 0) {
 		g_MpSetup.stagenum = g_NetAutoStage;
 	}

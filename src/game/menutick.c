@@ -658,7 +658,12 @@ void menuTick(void)
 			case MENUROOT_MPENDSCREEN:
 				if (g_Vars.normmplayerisrunning) {
 					var80087260 = 3;
-				} else if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+				} else if ((g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0)
+#ifndef PLATFORM_N64
+						// see mpReset: configs aren't swapped in net games
+						&& !g_NetMode
+#endif
+						) {
 					struct mpplayerconfig tmp;
 
 					tmp = g_PlayerConfigsArray[MAX_PLAYERS];

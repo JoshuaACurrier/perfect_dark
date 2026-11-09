@@ -2115,6 +2115,10 @@ void playerTickCutscene(bool arg0)
 			// just booted up and host/join was requested from command line, skip the intro cutscene
 			g_CutsceneSkipRequested = true;
 		}
+	} else if (g_NetMode == NETMODE_SERVER && g_CutsceneCurTotalFrame60f > 10 && !g_Vars.normmplayerisrunning) {
+		// cutscenes aren't synced to clients yet, so don't make them wait through one
+		// TODO: play them on clients too
+		g_CutsceneSkipRequested = true;
 	}
 #endif
 }
@@ -4287,7 +4291,12 @@ void playerTick(bool arg0)
 			bgunHandlePlayerDead();
 		}
 
-		if (g_Vars.currentplayer->redbloodfinished && g_Vars.currentplayer->deathanimfinished) {
+		if (g_Vars.currentplayer->redbloodfinished && g_Vars.currentplayer->deathanimfinished
+#ifndef PLATFORM_N64
+				// only the server ends the stage
+				&& g_NetMode != NETMODE_CLIENT
+#endif
+				) {
 			if (g_Vars.mplayerisrunning == false) {
 				mainEndStage();
 			} else if (g_Vars.coopplayernum >= 0) {

@@ -9,6 +9,9 @@
 #include "lib/model.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#endif
 
 bool (*g_CommandPointers[])(void) = {
 	/*0x0000*/ aiGoToNext,
@@ -668,8 +671,25 @@ u32 chraiGoToLabel(u8 *ailist, u32 aioffset, u8 label)
 	} while (true);
 }
 
+#ifndef PLATFORM_N64
+static void chraiExecuteImpl(void *entity, s32 proptype);
+#endif
+
 void chraiExecute(void *entity, s32 proptype)
 {
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_CLIENT) {
+		// the server runs all AI and mission scripts
+		return;
+	}
+	g_NetInScript++;
+	chraiExecuteImpl(entity, proptype);
+	g_NetInScript--;
+}
+
+static void chraiExecuteImpl(void *entity, s32 proptype)
+{
+#endif
 	g_Vars.chrdata = NULL;
 	g_Vars.truck = NULL;
 	g_Vars.heli = NULL;

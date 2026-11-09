@@ -56,11 +56,14 @@ static void bwalkUpdateRemote(void)
 	pl->bondshotspeed.z = 0.f;
 	pl->bondbreathing = 0.f;
 
+	// snap if we're too far off: lerping with collision can get the remote player
+	// stuck on a wall forever, e.g. after a script warped them on the other end
+	const f32 dx = pl->prop->pos.x - inmove->pos.x;
+	const f32 dy = pl->prop->pos.y - inmove->pos.y;
+	const f32 dz = pl->prop->pos.z - inmove->pos.z;
 	const bool forcepos = !inmoveprev->tick ||
 		(inmove->ucmd & UCMD_FL_FORCEPOS) ||
-		(fabsf(pl->prop->pos.x - inmove->pos.x) > 512.f) ||
-		(fabsf(pl->prop->pos.y - inmove->pos.y) > 512.f) ||
-		(fabsf(pl->prop->pos.z - inmove->pos.z) > 512.f);
+		(dx * dx + dy * dy + dz * dz > 150.f * 150.f);
 
 	delta.x = 0.f;
 	delta.y = 0.f;
@@ -77,8 +80,8 @@ static void bwalkUpdateRemote(void)
 	} else if (!moveticks) {
 		// duplicate move, reposition to correct coords
 		delta.x = inmove->pos.x - pl->prop->pos.x;
-		delta.x = inmove->pos.y - pl->prop->pos.y;
-		delta.x = inmove->pos.z - pl->prop->pos.z;
+		delta.y = inmove->pos.y - pl->prop->pos.y;
+		delta.z = inmove->pos.z - pl->prop->pos.z;
 		bwalk0f0c63bc(&delta, pl->swaytarget == 0.0f, cdtype);
 	} else if (pl->client->lerpticks <= moveticks) {
 		// lerp towards the correct position

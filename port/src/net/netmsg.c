@@ -21,6 +21,9 @@
 #include "game/setuputils.h"
 #include "game/modelmgr.h"
 #include "game/propsnd.h"
+#include "game/lv.h"
+#include "game/title.h"
+#include "game/pdmode.h"
 #include "system.h"
 #include "romdata.h"
 #include "fs.h"
@@ -423,8 +426,28 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 		return dst->error;
 	}
 
-	// game settings
-	netbufWriteU8(dst, 0); // 0 for combat sim TODO: coop/anti
+	// game mode
+	const u8 mode = (g_Vars.coopplayernum >= 0) ? NETGAMEMODE_COOP : NETGAMEMODE_COMBAT;
+	netbufWriteU8(dst, mode);
+
+	if (mode == NETGAMEMODE_COOP) {
+		netbufWriteU8(dst, g_MissionConfig.stagenum);
+		netbufWriteU8(dst, g_MissionConfig.stageindex);
+		netbufWriteU8(dst, g_MissionConfig.difficulty);
+		netbufWriteU8(dst, g_MissionConfig.pdmode);
+		netbufWriteU8(dst, g_MissionConfig.pdmodereaction);
+		netbufWriteU8(dst, g_MissionConfig.pdmodehealth);
+		netbufWriteU8(dst, g_MissionConfig.pdmodedamage);
+		netbufWriteU8(dst, g_MissionConfig.pdmodeaccuracy);
+		netbufWriteF32(dst, g_MissionConfig.pdmodereactionf);
+		netbufWriteF32(dst, g_MissionConfig.pdmodehealthf);
+		netbufWriteF32(dst, g_MissionConfig.pdmodedamagef);
+		netbufWriteF32(dst, g_MissionConfig.pdmodeaccuracyf);
+		netbufWriteU8(dst, g_Vars.coopradaron);
+		netbufWriteU8(dst, g_Vars.coopfriendlyfire);
+	}
+
+	// combat sim settings (sent in every mode, chrslots matters for co-op too)
 	netbufWriteU8(dst, g_MpSetup.scenario);
 	netbufWriteU8(dst, g_MpSetup.scorelimit);
 	netbufWriteU8(dst, g_MpSetup.timelimit);
@@ -492,7 +515,30 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 		return src->error;
 	}
 
-	const u8 mode = netbufReadU8(src); // TODO: coop, anti
+	const u8 mode = netbufReadU8(src);
+
+	if (mode == NETGAMEMODE_COOP) {
+		g_MissionConfig.iscoop = true;
+		g_MissionConfig.isanti = false;
+		g_MissionConfig.stagenum = netbufReadU8(src);
+		g_MissionConfig.stageindex = netbufReadU8(src);
+		g_MissionConfig.difficulty = netbufReadU8(src);
+		g_MissionConfig.pdmode = netbufReadU8(src);
+		g_MissionConfig.pdmodereaction = netbufReadU8(src);
+		g_MissionConfig.pdmodehealth = netbufReadU8(src);
+		g_MissionConfig.pdmodedamage = netbufReadU8(src);
+		g_MissionConfig.pdmodeaccuracy = netbufReadU8(src);
+		g_MissionConfig.pdmodereactionf = netbufReadF32(src);
+		g_MissionConfig.pdmodehealthf = netbufReadF32(src);
+		g_MissionConfig.pdmodedamagef = netbufReadF32(src);
+		g_MissionConfig.pdmodeaccuracyf = netbufReadF32(src);
+		g_Vars.coopradaron = netbufReadU8(src);
+		g_Vars.coopfriendlyfire = netbufReadU8(src);
+	} else if (mode != NETGAMEMODE_COMBAT) {
+		sysLogPrintf(LOG_WARNING, "NET: SVC_STAGE: unsupported game mode %u", mode);
+		return 1;
+	}
+
 	g_MpSetup.stagenum = stagenum;
 	g_MpSetup.scenario = netbufReadU8(src);
 	g_MpSetup.scorelimit = netbufReadU8(src);
@@ -587,9 +633,24 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 
 	g_NetNumClients = numplayers;
 
-	sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE from server: going to stage 0x%02x with %u players", g_MpSetup.stagenum, numplayers);
+	sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE from server: going to stage 0x%02x with %u players (mode %u)", g_MpSetup.stagenum, numplayers, mode);
 
-	mpStartMatch();
+	if (mode == NETGAMEMODE_COOP) {
+		// the host is Bond; we're a co-op buddy. Our local player is always index 0
+		// and the host takes our server-side slot (see netPlayersAllocate)
+		g_Vars.numaibuddies = 0;
+		g_Vars.bondplayernum = g_NetLocalClient->playernum;
+		g_Vars.coopplayernum = 0;
+		g_Vars.antiplayernum = -1;
+		setNumPlayers(numplayers);
+		lvSetDifficulty(g_MissionConfig.difficulty);
+		titleSetNextStage(g_MissionConfig.stagenum);
+		titleSetNextMode(TITLEMODE_SKIP);
+		mainChangeToStage(g_MissionConfig.stagenum);
+	} else {
+		mpStartMatch();
+	}
+
 	menuStop();
 
 	return 0;
@@ -598,6 +659,17 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 u32 netmsgSvcStageEndWrite(struct netbuf *dst)
 {
 	netbufWriteU8(dst, SVC_STAGE_END);
+
+	// who aborted the mission (only the host can, but keep it general)
+	u8 abortedmask = 0;
+	for (s32 i = 0; i < g_NetMaxClients && i < 8; ++i) {
+		struct netclient *ncl = &g_NetClients[i];
+		if (ncl->state && ncl->player && ncl->player->aborted) {
+			abortedmask |= 1 << i;
+		}
+	}
+	netbufWriteU8(dst, (g_Vars.coopplayernum >= 0) ? NETGAMEMODE_COOP : NETGAMEMODE_COMBAT);
+	netbufWriteU8(dst, abortedmask);
 
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *ncl = &g_NetClients[i];
@@ -621,6 +693,23 @@ u32 netmsgSvcStageEndWrite(struct netbuf *dst)
 
 u32 netmsgSvcStageEndRead(struct netbuf *src, struct netclient *srccl)
 {
+	const u8 mode = netbufReadU8(src);
+	const u8 abortedmask = netbufReadU8(src);
+
+	if (src->error) {
+		return src->error;
+	}
+
+	// the end screen looks at these, so set them before the players go away
+	for (s32 i = 0; i < g_NetMaxClients && i < 8; ++i) {
+		struct netclient *ncl = &g_NetClients[i];
+		if ((abortedmask & (1 << i)) && ncl->player) {
+			ncl->player->aborted = true;
+		}
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE_END from server (mode %u, aborted 0x%02x)", mode, abortedmask);
+
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *ncl = &g_NetClients[i];
 		if (ncl->state) {

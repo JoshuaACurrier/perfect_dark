@@ -22,6 +22,10 @@
 #include "lib/vi.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netcoop.h"
+#endif
 #include "string.h"
 
 u32 g_NextHudMessageId;
@@ -989,7 +993,8 @@ void hudmsgCreateFromArgs(char *text, s32 type, s32 conf00, s32 conf01, s32 conf
 
 #ifndef PLATFORM_N64
 	if (g_NetMode && g_Vars.currentplayernum != 0) {
-		// do not create hudmsgs for other net players
+		// do not create hudmsgs for other net players, but pass on the ones from mission scripts
+		netcoopForwardHudmsg(text, type, flags);
 		return;
 	}
 #endif

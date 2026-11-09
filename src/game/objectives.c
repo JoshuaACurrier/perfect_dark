@@ -22,6 +22,10 @@
 #include "lib/mtx.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netcoop.h"
+#endif
 #include "platform.h"
 
 struct objective *g_Objectives[MAX_OBJECTIVES];
@@ -201,6 +205,13 @@ s32 objectiveCheck(s32 index)
 {
 	u32 stack[5];
 	s32 objstatus = OBJECTIVE_COMPLETE;
+
+#ifndef PLATFORM_N64
+	// in a net game the server decides, since only it runs the mission scripts
+	if (netcoopGetObjectiveStatus(index, &objstatus)) {
+		return objstatus;
+	}
+#endif
 
 	if (index < ARRAYCOUNT(g_Objectives)) {
 		if (g_Objectives[index] == NULL) {

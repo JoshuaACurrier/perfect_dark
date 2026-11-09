@@ -25,6 +25,8 @@
 #define SVC_CHR_SHOT      0x41 // chr fired a shot
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
+#define SVC_OBJECTIVES    0x50 // objective statuses changed
+#define SVC_HUDMSG        0x51 // hud message from a mission script
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing

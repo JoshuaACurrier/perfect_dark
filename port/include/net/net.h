@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 13
+#define NET_PROTOCOL_VER 14
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -16,6 +16,11 @@
 #define NET_BUFSIZE 1440
 
 #define NET_DEFAULT_PORT 27100
+
+// game modes in SVC_STAGE_START / SVC_STAGE_END
+#define NETGAMEMODE_COMBAT 0
+#define NETGAMEMODE_COOP   1
+#define NETGAMEMODE_ANTI   2
 
 #define NET_NULL_CLIENT 0xFF
 #define NET_NULL_PROP 0
@@ -122,6 +127,9 @@ extern u32 g_NetServerPort;
 extern char g_NetLastJoinAddr[NET_MAX_ADDR + 1];
 
 extern s32 g_NetDebugDraw;
+
+// > 0 while the server is running an AI/mission script (see chraiExecute)
+extern s32 g_NetInScript;
 
 extern s32 g_NetMaxClients;
 extern s32 g_NetNumClients;

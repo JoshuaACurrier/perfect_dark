@@ -35,6 +35,7 @@
 #include "types.h"
 #ifndef PLATFORM_N64
 #include "net/net.h"
+#include "system.h"
 #endif
 
 u8 g_InventoryWeapon;
@@ -733,6 +734,27 @@ MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *i
 
 		titleSetNextStage(g_MissionConfig.stagenum);
 
+#ifndef PLATFORM_N64
+		if (g_MissionConfig.iscoop && g_NetMode == NETMODE_SERVER) {
+			// online co-op: the host is Bond, everyone else is a co-op buddy
+			s32 numplayers = 0;
+			for (s32 i = 0; i < g_NetMaxClients; ++i) {
+				if (g_NetClients[i].state >= CLSTATE_LOBBY) {
+					++numplayers;
+				}
+			}
+			if (numplayers > 2) {
+				// TODO: more than one co-op buddy
+				sysLogPrintf(LOG_WARNING, "NET: co-op supports 2 players for now, %d are connected", numplayers);
+				numplayers = 2;
+			}
+			g_Vars.numaibuddies = 0;
+			g_Vars.bondplayernum = 0;
+			g_Vars.coopplayernum = (numplayers >= 2) ? 1 : -1;
+			g_Vars.antiplayernum = -1;
+			setNumPlayers(numplayers);
+		} else
+#endif
 		if (g_MissionConfig.iscoop) {
 			if (g_Vars.numaibuddies == 0) {
 				// Coop with human buddy
@@ -4490,6 +4512,13 @@ MenuItemHandlerResult menuhandlerInventoryList(s32 operation, struct menuitem *i
 MenuItemHandlerResult menuhandlerAbortMission(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
+#ifndef PLATFORM_N64
+		if (g_NetMode == NETMODE_CLIENT) {
+			// a client can't end the mission for everyone; just leave
+			netDisconnect();
+			return 0;
+		}
+#endif
 		g_Vars.currentplayer->aborted = true;
 		mainEndStage();
 	}
