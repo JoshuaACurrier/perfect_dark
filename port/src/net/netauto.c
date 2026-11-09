@@ -10,6 +10,7 @@
 //   --net-coop STAGE         (host) start a co-op mission on STAGE (e.g. 0x30 Defection) instead of Combat Sim
 //   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
+//   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
 //   --net-autopilot [SEED]   drive the local player with scripted input
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
 //   --net-lag MS             delay every outgoing packet by MS milliseconds
@@ -31,6 +32,7 @@
 #include "game/menu.h"
 #include "game/mplayer/mplayer.h"
 #include "lib/model.h"
+#include "lib/main.h"
 #include "system.h"
 
 s32 g_NetAutopilot = 0;
@@ -43,6 +45,8 @@ static s32 g_NetAutoScenario = -1;
 static s32 g_NetAutoCoopStage = -1;
 static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
+static s32 g_NetAutoAbortSecs = 0;
+static s32 g_NetAutoAborted = 0;
 static const char *g_NetAutoName = NULL;
 
 static s32 g_NetAutoStarted = 0;
@@ -71,6 +75,7 @@ void netAutoInit(void)
 	g_NetAutoCoopStage = sysArgGetInt("--net-coop", -1);
 	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
+	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
 
 	if (g_NetAutoSims > MAX_BOTS) {
 		g_NetAutoSims = MAX_BOTS;
@@ -202,12 +207,20 @@ static void netAutoTickStart(void)
 
 static void netAutoTickQuit(void)
 {
-	if (g_NetAutoQuitSecs <= 0) {
-		return;
-	}
-
 	if (g_NetLocalClient && g_NetLocalClient->state == CLSTATE_GAME) {
 		++g_NetAutoGameTicks;
+	}
+
+	if (g_NetMode == NETMODE_SERVER && g_NetAutoAbortSecs > 0 && !g_NetAutoAborted
+			&& g_NetAutoGameTicks >= (u32)g_NetAutoAbortSecs * 60 && g_Vars.players[0]) {
+		g_NetAutoAborted = 1;
+		sysLogPrintf(LOG_NOTE, "NET: autoabort after %d seconds in game", g_NetAutoAbortSecs);
+		g_Vars.players[0]->aborted = true; // the host's local player is always 0
+		mainEndStage();
+	}
+
+	if (g_NetAutoQuitSecs <= 0) {
+		return;
 	}
 
 	if (g_NetAutoGameTicks >= (u32)g_NetAutoQuitSecs * 60) {

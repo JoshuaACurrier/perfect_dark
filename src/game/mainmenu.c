@@ -725,6 +725,13 @@ struct menudialogdef g_PreAndPostMissionBriefingMenuDialog = {
 
 MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *item, union handlerdata *data)
 {
+#ifndef PLATFORM_N64
+	if (operation == MENUOP_SET && g_NetMode == NETMODE_CLIENT) {
+		// the host picks the mission; the next stage starts when they accept
+		return 0;
+	}
+#endif
+
 	if (operation == MENUOP_SET) {
 		menuStop();
 
