@@ -132,7 +132,7 @@ static const char *ckNames[CK_TOTAL_COUNT] = {
 	"CK_0200",
 	"CK_0400",
 	"CK_0800",
-	"CK_1000",
+	"JUMP_BUTTON",
 	"CK_2000",
 	"CK_4000",
 	"CK_8000"
@@ -192,7 +192,7 @@ static char vkNames[VK_TOTAL_COUNT][64];
 
 static s8 vkPrevState[VK_TOTAL_COUNT];
 
-void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
+void inputSetDefaultKeyBinds(s32 cidx, s32 layout)
 {
 	// TODO: make VK constants for all these
 	static const u32 pckbbinds[][3] = {
@@ -200,7 +200,8 @@ void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
 		{ CK_X,             SDL_SCANCODE_R,      0                   },
 		{ CK_RTRIG,         VK_MOUSE_RIGHT,      SDL_SCANCODE_Z      },
 		{ CK_LTRIG,         SDL_SCANCODE_F,      SDL_SCANCODE_X      },
-		{ CK_ZTRIG,         VK_MOUSE_LEFT,       SDL_SCANCODE_SPACE  },
+		{ CK_ZTRIG,         VK_MOUSE_LEFT,       0                   },
+		{ CK_JUMP,          SDL_SCANCODE_SPACE,  0                   },
 		{ CK_START,         SDL_SCANCODE_TAB,    0                   },
 		{ CK_DPAD_D,        SDL_SCANCODE_Q,      VK_MOUSE_MIDDLE     },
 		{ CK_DPAD_U,        0,                   0                   },
@@ -237,6 +238,28 @@ void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
 		{ CK_ACCEPT, SDL_CONTROLLER_BUTTON_A             },
 		{ CK_CANCEL, SDL_CONTROLLER_BUTTON_B             },
 		{ CK_8000,   SDL_CONTROLLER_BUTTON_LEFTSTICK     },
+	};
+
+	// modern twin-stick shooter layout (the default): sticks move and look,
+	// triggers aim and fire, A jumps, B crouches, X uses and reloads
+	static const u32 modernjoybinds[][2] = {
+		{ CK_JUMP,   SDL_CONTROLLER_BUTTON_A             },
+		{ CK_8000,   SDL_CONTROLLER_BUTTON_B             },
+		{ CK_B,      SDL_CONTROLLER_BUTTON_X             },
+		{ CK_X,      SDL_CONTROLLER_BUTTON_X             },
+		{ CK_Y,      SDL_CONTROLLER_BUTTON_Y             },
+		{ CK_DPAD_D, SDL_CONTROLLER_BUTTON_LEFTSHOULDER  },
+		{ CK_LTRIG,  SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
+		{ CK_RTRIG,  VK_JOY1_LTRIG - VK_JOY1_BEGIN       },
+		{ CK_ZTRIG,  VK_JOY1_RTRIG - VK_JOY1_BEGIN       },
+		{ CK_START,  SDL_CONTROLLER_BUTTON_START         },
+		{ CK_DPAD_D, SDL_CONTROLLER_BUTTON_BACK          },
+		{ CK_DPAD_L, SDL_CONTROLLER_BUTTON_DPAD_LEFT     },
+		{ CK_Y,      SDL_CONTROLLER_BUTTON_DPAD_RIGHT    },
+		{ CK_8000,   SDL_CONTROLLER_BUTTON_LEFTSTICK     },
+		{ CK_2000,   SDL_CONTROLLER_BUTTON_RIGHTSTICK    },
+		{ CK_ACCEPT, SDL_CONTROLLER_BUTTON_A             },
+		{ CK_CANCEL, SDL_CONTROLLER_BUTTON_B             },
 	};
 
 	static const u32 n64kbbinds[][3] = {
@@ -279,16 +302,21 @@ void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode)
 	const u32 (*joybinds)[2];
 	u32 numkbbinds;
 	u32 numjoybinds;
-	if (n64mode) {
+	if (layout == INPUT_LAYOUT_N64) {
 		kbbinds = n64kbbinds;
 		joybinds = n64joybinds;
 		numkbbinds = sizeof(n64kbbinds) / sizeof(n64kbbinds[0]);
 		numjoybinds = sizeof(n64joybinds) / sizeof(n64joybinds[0]);
-	} else {
+	} else if (layout == INPUT_LAYOUT_CLASSIC) {
 		kbbinds = pckbbinds;
 		joybinds = pcjoybinds;
 		numkbbinds = sizeof(pckbbinds) / sizeof(pckbbinds[0]);
 		numjoybinds = sizeof(pcjoybinds) / sizeof(pcjoybinds[0]);
+	} else {
+		kbbinds = pckbbinds;
+		joybinds = modernjoybinds;
+		numkbbinds = sizeof(pckbbinds) / sizeof(pckbbinds[0]);
+		numjoybinds = sizeof(modernjoybinds) / sizeof(modernjoybinds[0]);
 	}
 
 	if (cidx == 0) {
@@ -676,9 +704,21 @@ static inline void inputParseBindString(const s32 ctrl, const u32 ck, char *bind
 
 static inline void inputLoadBinds(void)
 {
+	// a config from before Jump existed has no JUMP_BUTTON line, and Space as a second Fire key
+	const s32 nojumpbind = !bindStrs[0][CK_JUMP][0];
+
 	for (s32 i = 0; i < MAXCONTROLLERS; ++i) {
 		for (u32 ck = 0; ck < CK_TOTAL_COUNT; ++ck) {
 			inputParseBindString(i, ck, bindStrs[i][ck]);
+		}
+	}
+
+	if (nojumpbind) {
+		// Jump keeps its default (Space); take Space off Fire so it doesn't do both
+		for (s32 b = 0; b < INPUT_MAX_BINDS; ++b) {
+			if (binds[0][CK_ZTRIG][b] == VK_SPACE) {
+				binds[0][CK_ZTRIG][b] = 0;
+			}
 		}
 	}
 }

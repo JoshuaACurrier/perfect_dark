@@ -2826,6 +2826,8 @@ struct player {
 	/*0x1c84*/ u32 ucmd;
 	/*0x1c88*/ bool isremote;
 	/*0x1c8c*/ struct netclient *client;
+	bool jumprequest; // jump button pressed this frame (or a remote player's jump arrived)
+	bool jumping;     // in the air because of a jump
 #endif
 };
 
@@ -6183,6 +6185,7 @@ struct extplayerconfig {
 	f32 crosshairedgeboundary;
 	s32 crosshairhealth;
 	s32 usereloads;
+	s32 jump; // the Jump button works (not in the original game)
 };
 
 struct setupblock {

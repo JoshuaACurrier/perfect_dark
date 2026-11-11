@@ -441,6 +441,11 @@ s32 netAutopilotRead(s32 idx, OSContPad *pad)
 		pad->button |= B_BUTTON;
 	}
 
+	// jump now and then (the jump button is an extended button; see BUTTON_JUMP)
+	if ((g_NetTick % 150) >= 60 && (g_NetTick % 150) < 63) {
+		pad->button |= CONT_1000;
+	}
+
 	return true;
 }
 

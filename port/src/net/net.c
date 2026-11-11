@@ -224,7 +224,7 @@ static inline void netClientRecordMove(struct netclient *cl, const struct player
 
 	if (g_NetMode == NETMODE_SERVER && pl->isremote && cl->inmove[0].tick) {
 		// carry some of the client inputs over to the outmove
-		move->ucmd |= (cl->inmove[0].ucmd & (UCMD_FIRE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_EYESSHUT | UCMD_SELECT | UCMD_SELECT_DUAL));
+		move->ucmd |= (cl->inmove[0].ucmd & (UCMD_FIRE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_EYESSHUT | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_JUMP));
 		move->crosspos[0] = cl->inmove[0].crosspos[0];
 		move->crosspos[1] = cl->inmove[0].crosspos[1];
 	}

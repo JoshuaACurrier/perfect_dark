@@ -1306,6 +1306,21 @@ static MenuItemHandlerResult menuhandlerUseKeyReloads(s32 operation, struct menu
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerJump(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		return !g_PlayerExtCfg[g_ExtMenuPlayer].extcontrols;
+	case MENUOP_GET:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].jump;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].jump = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerCrouchMode(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	static const char *opts[] = {
@@ -1587,6 +1602,14 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		menuhandlerCrouchMode,
 	},
 	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Jump",
+		0,
+		menuhandlerJump,
+	},
+	{
 		MENUITEMTYPE_SLIDER,
 		0,
 		MENUITEMFLAG_LITERAL_TEXT,
@@ -1724,80 +1747,118 @@ struct menubind {
 	const char *n64name;
 };
 
+// grouped by what the player is doing, named by action; with extended controls
+// off the N64 button names are shown instead, as before
 static const struct menubind menuBinds[] = {
-	{ CK_ZTRIG,  "Fire [ZT]\n",         "N64 Z Trigger\n" },
-	{ CK_LTRIG,  "Fire Mode [LT]\n",    "N64 L Trigger\n"},
-	{ CK_RTRIG,  "Aim Mode [RT]\n",     "N64 R Trigger\n" },
-	{ CK_A,      "Use / Accept [A]\n",  "N64 A Button\n" },
-	{ CK_B,      "Use / Cancel [B]\n",  "N64 B Button\n" },
-	{ CK_START,  "Pause Menu [ST]\n",   "N64 Start\n" },
-	{ CK_DPAD_U, "D-Pad Up [DU]\n",     "N64 D-Pad Up\n" },
-	{ CK_DPAD_R, "D-Pad Right [DR]\n",  "N64 D-Pad Right\n" },
-	{ CK_DPAD_L, "Prev Weapon [DL]\n",  "N64 D-Pad Left\n" },
-	{ CK_DPAD_D, "Radial Menu [DD]\n",  "N64 D-Pad Down\n" },
-	{ CK_C_U,    "Forward [CU]\n",      "N64 C-Up\n" },
-	{ CK_C_D,    "Backward [CD]\n",     "N64 C-Down\n" },
-	{ CK_C_R,    "Strafe Right [CR]\n", "N64 C-Right\n" },
-	{ CK_C_L,    "Strafe Left [CL]\n",  "N64 C-Left\n" },
-	{ CK_X,      "Reload [X]\n",        "N64 Ext X\n" },
-	{ CK_Y,      "Next Weapon [Y]\n",   "N64 Ext Y\n" },
-	{ CK_8000,   "Cycle Crouch [+]\n",  "N64 Ext 8000\n" },
-	{ CK_4000,   "Half Crouch [+]\n",   "N64 Ext 4000\n" },
-	{ CK_2000,   "Full Crouch [+]\n",   "N64 Ext 2000\n" },
-	{ CK_ACCEPT, "UI Accept [+]\n",     "EXT UI Accept\n" },
-	{ CK_CANCEL, "UI Cancel [+]\n",     "EXT UI Cancel\n" },
+	// movement
+	{ CK_C_U,    "Forward\n",                "N64 C-Up\n" },
+	{ CK_C_D,    "Backward\n",               "N64 C-Down\n" },
+	{ CK_C_L,    "Strafe Left\n",            "N64 C-Left\n" },
+	{ CK_C_R,    "Strafe Right\n",           "N64 C-Right\n" },
+	{ CK_JUMP,   "Jump\n",                   "Ext Jump\n" },
+	{ CK_8000,   "Crouch (cycle)\n",         "N64 Ext 8000\n" },
+	{ CK_4000,   "Half Crouch\n",            "N64 Ext 4000\n" },
+	{ CK_2000,   "Full Crouch\n",            "N64 Ext 2000\n" },
+	// combat
+	{ CK_ZTRIG,  "Fire\n",                   "N64 Z Trigger\n" },
+	{ CK_RTRIG,  "Aim\n",                    "N64 R Trigger\n" },
+	{ CK_X,      "Reload\n",                 "N64 Ext X\n" },
+	{ CK_LTRIG,  "Fire Mode\n",              "N64 L Trigger\n" },
+	{ CK_Y,      "Next Weapon\n",            "N64 Ext Y\n" },
+	{ CK_DPAD_L, "Previous Weapon\n",        "N64 D-Pad Left\n" },
+	{ CK_DPAD_D, "Weapon Menu\n",            "N64 D-Pad Down\n" },
+	// interact
+	{ CK_B,      "Use\n",                    "N64 B Button\n" },
+	{ CK_A,      "Use (Alternate)\n",        "N64 A Button\n" },
+	{ CK_START,  "Pause Menu\n",             "N64 Start\n" },
+	{ CK_ACCEPT, "Menu: Accept\n",           "EXT UI Accept\n" },
+	{ CK_CANCEL, "Menu: Back\n",             "EXT UI Cancel\n" },
+	// leftovers
+	{ CK_DPAD_U, "N64 D-Pad Up\n",           "N64 D-Pad Up\n" },
+	{ CK_DPAD_R, "N64 D-Pad Right\n",        "N64 D-Pad Right\n" },
 };
 
 static const char *menutextBind(struct menuitem *item);
 static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *item, union handlerdata *data);
+static MenuItemHandlerResult menuhandlerResetBindsModern(s32 operation, struct menuitem *item, union handlerdata *data);
 static MenuItemHandlerResult menuhandlerResetBindsPC(s32 operation, struct menuitem *item, union handlerdata *data);
 static MenuItemHandlerResult menuhandlerResetBindsN64(s32 operation, struct menuitem *item, union handlerdata *data);
 
-#define DEFINE_MENU_BIND() \
+// param = index into menuBinds
+#define DEFINE_MENU_BIND(i) \
 	{ \
 		MENUITEMTYPE_DROPDOWN, \
-		0, \
+		i, \
 		0, \
 		(uintptr_t)menutextBind, \
 		0, \
 		menuhandlerBind, \
 	}
 
+#define DEFINE_MENU_BIND_HEADER(text) \
+	{ \
+		MENUITEMTYPE_LABEL, \
+		0, \
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_LESSLEFTPADDING, \
+		(uintptr_t)text, \
+		0, \
+		NULL, \
+	}
+
+#define DEFINE_MENU_BIND_SEPARATOR() \
+	{ \
+		MENUITEMTYPE_SEPARATOR, \
+		0, \
+		0, \
+		0, \
+		0, \
+		NULL, \
+	}
+
 struct menuitem g_ExtendedBindsMenuItems[] = {
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
-	DEFINE_MENU_BIND(),
+	DEFINE_MENU_BIND_HEADER("Movement\n"),
+	DEFINE_MENU_BIND(0),
+	DEFINE_MENU_BIND(1),
+	DEFINE_MENU_BIND(2),
+	DEFINE_MENU_BIND(3),
+	DEFINE_MENU_BIND(4),
+	DEFINE_MENU_BIND(5),
+	DEFINE_MENU_BIND(6),
+	DEFINE_MENU_BIND(7),
+	DEFINE_MENU_BIND_SEPARATOR(),
+	DEFINE_MENU_BIND_HEADER("Combat\n"),
+	DEFINE_MENU_BIND(8),
+	DEFINE_MENU_BIND(9),
+	DEFINE_MENU_BIND(10),
+	DEFINE_MENU_BIND(11),
+	DEFINE_MENU_BIND(12),
+	DEFINE_MENU_BIND(13),
+	DEFINE_MENU_BIND(14),
+	DEFINE_MENU_BIND_SEPARATOR(),
+	DEFINE_MENU_BIND_HEADER("Interact\n"),
+	DEFINE_MENU_BIND(15),
+	DEFINE_MENU_BIND(16),
+	DEFINE_MENU_BIND(17),
+	DEFINE_MENU_BIND(18),
+	DEFINE_MENU_BIND(19),
+	DEFINE_MENU_BIND_SEPARATOR(),
+	DEFINE_MENU_BIND_HEADER("Unused N64 buttons\n"),
+	DEFINE_MENU_BIND(20),
+	DEFINE_MENU_BIND(21),
+	DEFINE_MENU_BIND_SEPARATOR(),
 	{
-		MENUITEMTYPE_SEPARATOR,
+		MENUITEMTYPE_SELECTABLE,
 		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Reset to Modern Layout\n",
 		0,
-		0,
-		0,
-		NULL,
+		menuhandlerResetBindsModern,
 	},
 	{
 		MENUITEMTYPE_SELECTABLE,
 		0,
 		MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"Reset to PC Defaults\n",
+		(uintptr_t)"Reset to Classic PC Layout\n",
 		0,
 		menuhandlerResetBindsPC,
 	},
@@ -1805,18 +1866,11 @@ struct menuitem g_ExtendedBindsMenuItems[] = {
 		MENUITEMTYPE_SELECTABLE,
 		0,
 		MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"Reset to N64 Defaults\n",
+		(uintptr_t)"Reset to N64 Layout\n",
 		0,
 		menuhandlerResetBindsN64,
 	},
-	{
-		MENUITEMTYPE_SEPARATOR,
-		0,
-		0,
-		0,
-		0,
-		NULL,
-	},
+	DEFINE_MENU_BIND_SEPARATOR(),
 	{
 		MENUITEMTYPE_SELECTABLE,
 		0,
@@ -1851,13 +1905,13 @@ static MenuItemHandlerResult menuhandlerDoBind(s32 operation, struct menuitem *i
 static const char *menutextBind(struct menuitem *item)
 {
 	return g_PlayerExtCfg[g_ExtMenuPlayer].extcontrols ?
-		menuBinds[item - g_ExtendedBindsMenuItems].name :
-		menuBinds[item - g_ExtendedBindsMenuItems].n64name;
+		menuBinds[item->param].name :
+		menuBinds[item->param].n64name;
 }
 
 static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *item, union handlerdata *data)
 {
-	const s32 idx = item - g_ExtendedBindsMenuItems;
+	const s32 idx = item->param;
 	const u32 *binds;
 
 	static char keyname[128];
@@ -1890,10 +1944,19 @@ static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *ite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerResetBindsModern(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		inputSetDefaultKeyBinds(g_ExtMenuPlayer, INPUT_LAYOUT_MODERN);
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerResetBindsPC(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
-		inputSetDefaultKeyBinds(g_ExtMenuPlayer, false);
+		inputSetDefaultKeyBinds(g_ExtMenuPlayer, INPUT_LAYOUT_CLASSIC);
 	}
 
 	return 0;
@@ -1902,7 +1965,7 @@ static MenuItemHandlerResult menuhandlerResetBindsPC(s32 operation, struct menui
 static MenuItemHandlerResult menuhandlerResetBindsN64(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
-		inputSetDefaultKeyBinds(g_ExtMenuPlayer, true);
+		inputSetDefaultKeyBinds(g_ExtMenuPlayer, INPUT_LAYOUT_N64);
 	}
 
 	return 0;

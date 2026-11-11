@@ -16,6 +16,8 @@
 
 #define CONT_NUM_BUTTONS 32 // not including the stick axes
 
+#define CK_JUMP CK_1000
+
 enum virtkey {
 	/* same order as SDL scancodes */
 	VK_KEYBOARD_BEGIN = 0,
@@ -108,7 +110,7 @@ enum contkey {
 	CK_0200,
 	CK_0400,
 	CK_0800,
-	CK_1000,
+	CK_1000, // jump (PC addition)
 	CK_2000,
 	CK_4000,
 	CK_8000,
@@ -242,7 +244,11 @@ void inputUpdate(void);
 void inputSaveBinds(void);
 
 // reset given player's binds to either PC or N64 defaults
-void inputSetDefaultKeyBinds(s32 cidx, s32 n64mode);
+// default bindings for a controller slot; layout is INPUT_LAYOUT_*
+#define INPUT_LAYOUT_MODERN  0 // twin-stick, A jumps (the default)
+#define INPUT_LAYOUT_N64     1
+#define INPUT_LAYOUT_CLASSIC 2 // the PC port's original layout
+void inputSetDefaultKeyBinds(s32 cidx, s32 layout);
 
 // clear or get the last pressed button
 void inputClearLastKey(void);

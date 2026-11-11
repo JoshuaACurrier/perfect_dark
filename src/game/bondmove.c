@@ -145,6 +145,12 @@ static inline void bmoveProcessRemoteInput(const bool allowc1buttons)
 
 	pl->eyesshut = (inmove->ucmd & UCMD_EYESSHUT) != 0;
 
+	// the other side started a jump; do the same jump here so our vertical
+	// movement (which doesn't come from their position) matches
+	if (!handled && (inmove->ucmd & UCMD_JUMP) && !(inmoveprev->ucmd & UCMD_JUMP) && !pl->jumping) {
+		pl->jumprequest = true;
+	}
+
 	pl->speedtheta = 0.f; // TODO: figure out if anglespeed is even required
 	pl->speedverta = 0.f;
 	pl->crouchoffset = inmove->crouchofs;
@@ -496,6 +502,9 @@ void bmoveApplyMoveData(struct movedata *data)
 			}
 			if (data->eyesshut) {
 				g_Vars.currentplayer->ucmd |= UCMD_EYESSHUT;
+			}
+			if (g_Vars.currentplayer->jumping) {
+				g_Vars.currentplayer->ucmd |= UCMD_JUMP;
 			}
 			if (data->weaponbackoffset || data->weaponforwardoffset) {
 				g_Vars.currentplayer->ucmd |= UCMD_SELECT;
@@ -1858,6 +1867,15 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 						// prevent uncrouching if we don't fit
 						while (g_Vars.currentplayer->crouchpos > oldcrouchpos && !bwalkCanUncrouch()) {
 							g_Vars.currentplayer->crouchpos--;
+						}
+
+						// jump (not in the original game; bwalkUpdateVertical does the rest)
+						if (PLAYER_EXTCFG().jump) {
+							for (i = 0; i < numsamples; i++) {
+								if (joyGetButtonsPressedOnSample(i, contpad1, 0xffffffff) & BUTTON_JUMP) {
+									g_Vars.currentplayer->jumprequest = true;
+								}
+							}
 						}
 					}
 #endif

@@ -4762,6 +4762,7 @@ enum weaponnum {
 #define BUTTON_RADIAL         D_JPAD
 #define BUTTON_ALTMODE        L_TRIG
 
+#define BUTTON_JUMP           CONT_1000
 #define BUTTON_CROUCH_CYCLE   CONT_8000
 #define BUTTON_HALF_CROUCH    CONT_4000
 #define BUTTON_FULL_CROUCH    CONT_2000

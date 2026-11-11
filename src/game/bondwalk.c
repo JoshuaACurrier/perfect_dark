@@ -31,6 +31,10 @@
 #include "system.h"
 #include "utils.h"
 
+// upward speed of a jump in units per tick; with the game's gravity
+// (0.278 units/tick^2) that's about 54 units high and 0.66 s in the air
+#define BWALK_JUMP_SPEED 5.5f
+
 static inline void lerpcoord(struct coord *c, const struct coord *a, const struct coord *b, const f32 t) {
 	c->x = lerpf(a->x, b->x, t);
 	c->y = lerpf(a->y, b->y, t);
@@ -118,6 +122,10 @@ void bwalkInit(void)
 
 	g_Vars.currentplayer->isfalling = false;
 	g_Vars.currentplayer->fallstart = 0;
+#ifndef PLATFORM_N64
+	g_Vars.currentplayer->jumping = false;
+	g_Vars.currentplayer->jumprequest = false;
+#endif
 
 	g_Vars.currentplayer->gunextraaimx = 0;
 	g_Vars.currentplayer->gunextraaimy = 0;
@@ -1030,6 +1038,26 @@ void bwalkUpdateVertical(void)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	// Jump (not in the original game). Lift off by a unit and give the player an
+	// upward speed; the falling code below does the arc, ceilings and landing.
+	if (g_Vars.currentplayer->jumprequest) {
+		g_Vars.currentplayer->jumprequest = false;
+
+		if (!g_Vars.currentplayer->jumping
+				&& !g_Vars.currentplayer->isfalling
+				&& !g_Vars.currentplayer->onladder
+				&& !onladder2
+				&& g_Vars.currentplayer->crouchpos == CROUCHPOS_STAND
+				&& g_Vars.currentplayer->vv_manground - g_Vars.currentplayer->vv_ground < 2.0f
+				&& bwalkTryMoveUpwards(1.0f) == CDRESULT_NOCOLLISION) {
+			g_Vars.currentplayer->vv_manground += 1.0f;
+			g_Vars.currentplayer->bdeltapos.y = BWALK_JUMP_SPEED;
+			g_Vars.currentplayer->jumping = true;
+		}
+	}
+#endif
+
 	if (g_Vars.currentplayer->vv_manground > g_Vars.currentplayer->vv_ground) {
 		// Not standing on ground - probably falling, or on an object of some sort
 		fallspeed = g_Vars.currentplayer->bdeltapos.y;
@@ -1099,6 +1127,13 @@ void bwalkUpdateVertical(void)
 						setCurrentPlayerNum(prevplayernum);
 					}
 				}
+			}
+#endif
+
+#ifndef PLATFORM_N64
+			if (fallspeed <= 0.0f) {
+				// came down on something (hitting a ceiling on the way up doesn't count)
+				g_Vars.currentplayer->jumping = false;
 			}
 #endif
 
@@ -1183,6 +1218,14 @@ void bwalkUpdateVertical(void)
 
 		g_Vars.currentplayer->bdeltapos.y = 0;
 	}
+
+#ifndef PLATFORM_N64
+	if (g_Vars.currentplayer->jumping && g_Vars.currentplayer->bdeltapos.y <= 0
+			&& g_Vars.currentplayer->vv_manground <= g_Vars.currentplayer->vv_ground) {
+		// back on the floor
+		g_Vars.currentplayer->jumping = false;
+	}
+#endif
 
 	// Decrease crouchtime240 for this tick.
 	// If reached 0 and crouchfall is negative, start increasing
