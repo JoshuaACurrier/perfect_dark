@@ -179,7 +179,12 @@ void gamefileLoadDefaults(struct gamefile *file)
 #else
 	pakSetBitflag(GAMEFILEFLAG_P1_FORWARDPITCH, file->flags, true);
 #endif
+#ifdef PLATFORM_N64
 	pakSetBitflag(GAMEFILEFLAG_P1_AUTOAIM, file->flags, true);
+#else
+	// auto-aim is off by default on PC (mouse aiming); it can be turned on in Control options
+	pakSetBitflag(GAMEFILEFLAG_P1_AUTOAIM, file->flags, false);
+#endif
 	pakSetBitflag(GAMEFILEFLAG_P1_AIMCONTROL, file->flags, false);
 	pakSetBitflag(GAMEFILEFLAG_P1_SIGHTONSCREEN, file->flags, true);
 #ifdef PLATFORM_N64
@@ -201,7 +206,12 @@ void gamefileLoadDefaults(struct gamefile *file)
 #else
 	pakSetBitflag(GAMEFILEFLAG_P2_FORWARDPITCH, file->flags, true);
 #endif
+#ifdef PLATFORM_N64
 	pakSetBitflag(GAMEFILEFLAG_P2_AUTOAIM, file->flags, true);
+#else
+	// auto-aim is off by default on PC (mouse aiming); it can be turned on in Control options
+	pakSetBitflag(GAMEFILEFLAG_P2_AUTOAIM, file->flags, false);
+#endif
 	pakSetBitflag(GAMEFILEFLAG_P2_AIMCONTROL, file->flags, false);
 	pakSetBitflag(GAMEFILEFLAG_P2_SIGHTONSCREEN, file->flags, true);
 #ifdef PLATFORM_N64

@@ -636,6 +636,15 @@ void bmoveUpdateSpeedThetaControl(f32 value)
 }
 
 /**
+ * Whether aiming keeps the crosshair in the centre and turns the view instead
+ * (Modern aim style, or the older Mouse Aim Lock option).
+ */
+static inline bool bmoveAimLocked(void)
+{
+	return PLAYER_EXTCFG().aimstyle == AIMSTYLE_MODERN || PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_LOCKED;
+}
+
+/**
  * Controller look response: the original game squares the stick value (-1..1);
  * this raises it to the player's LookCurve power instead (2 = original, 1 = linear).
  */
@@ -1029,7 +1038,7 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 			movedata.freelookdx *= PLAYER_EXTCFG().aimsens;
 			movedata.freelookdy *= PLAYER_EXTCFG().aimsens;
 		}
-		allowmcross = (PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_CLASSIC) &&
+		allowmcross = !bmoveAimLocked() &&
 			(movedata.freelookdx || movedata.freelookdy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
 		if (movedata.invertpitch) {
 			movedata.freelookdy = -movedata.freelookdy;
@@ -1571,7 +1580,7 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 								movedata.analogwalk = 0;
 								movedata.analoglean = 0.f;
 							}
-							if (PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_LOCKED || bgunGetWeaponNum(HAND_RIGHT) == WEAPON_HORIZONSCANNER) {
+							if (bmoveAimLocked() || bgunGetWeaponNum(HAND_RIGHT) == WEAPON_HORIZONSCANNER) {
 								movedata.cannaturalpitch = movedata.cannaturalpitch || (movedata.freelookdy != 0.0f);
 								movedata.cannaturalturn = movedata.cannaturalturn  || (movedata.freelookdx != 0.0f);
 							}
@@ -2167,6 +2176,13 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 
 		if (movedata.zooming) {
 			zoomfov = currentPlayerGetGunZoomFov();
+
+#ifndef PLATFORM_N64
+			if (zoomfov <= 0 && PLAYER_EXTCFG().aimstyle == AIMSTYLE_MODERN && PLAYER_EXTCFG().aimzoom > 1.f) {
+				// guns without a scope: zoom in a little (aim down the sights)
+				zoomfov = PLAYER_DEFAULT_FOV / PLAYER_EXTCFG().aimzoom;
+			}
+#endif
 		}
 
 		if (bgunGetWeaponNum(HAND_RIGHT) == WEAPON_AR34

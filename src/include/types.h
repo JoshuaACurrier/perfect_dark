@@ -6189,6 +6189,8 @@ struct extplayerconfig {
 	f32 aimsens;   // mouse look speed multiplier while aiming (R / right mouse)
 	f32 lookcurve; // controller look response: stick^lookcurve (2 = the original game)
 	f32 aimassist; // how far auto-aim pulls the crosshair to a target, 0..1 (1 = the original game)
+	s32 aimstyle;  // AIMSTYLE_*: what aiming (R / right mouse) does
+	f32 aimzoom;   // AIMSTYLE_MODERN: magnification when aiming a gun that has no scope
 };
 
 struct setupblock {

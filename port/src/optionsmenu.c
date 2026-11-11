@@ -109,11 +109,61 @@ static MenuItemHandlerResult menuhandlerMouseEnabled(s32 operation, struct menui
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerAimStyle(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	static const char *opts[] = {
+		"Classic (N64)",
+		"Modern (Zoom)"
+	};
+
+	switch (operation) {
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(opts);
+		break;
+	case MENUOP_GETOPTIONTEXT:
+		return (intptr_t)opts[data->dropdown.value];
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].aimstyle = data->dropdown.value;
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		data->dropdown.value = g_PlayerExtCfg[g_ExtMenuPlayer].aimstyle;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerAimZoom(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	// slider 0..100 = 1.00x..2.00x
+	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].aimstyle != AIMSTYLE_MODERN;
+	case MENUOP_GETSLIDER:
+		data->slider.value = (g_PlayerExtCfg[g_ExtMenuPlayer].aimzoom - 1.f) * 100.f + 0.5f;
+		break;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].aimzoom = 1.f + data->slider.value / 100.f;
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		if (data->slider.value == 0) {
+			sprintf(data->slider.label, "Off");
+		} else {
+			sprintf(data->slider.label, "%.2fx", 1.f + data->slider.value / 100.f);
+		}
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerMouseAimLock(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		// Modern aim style always keeps the crosshair centred
+		return g_PlayerExtCfg[g_ExtMenuPlayer].aimstyle == AIMSTYLE_MODERN;
 	case MENUOP_GET:
-		return g_PlayerExtCfg[g_ExtMenuPlayer].mouseaimmode;
+		return g_PlayerExtCfg[g_ExtMenuPlayer].mouseaimmode || g_PlayerExtCfg[g_ExtMenuPlayer].aimstyle == AIMSTYLE_MODERN;
 	case MENUOP_SET:
 		g_PlayerExtCfg[g_ExtMenuPlayer].mouseaimmode = data->checkbox.value;
 		break;
@@ -317,6 +367,22 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 		(uintptr_t)"Mouse Enabled",
 		0,
 		menuhandlerMouseEnabled,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Aim Style",
+		0,
+		menuhandlerAimStyle,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Aim Zoom",
+		100,
+		menuhandlerAimZoom,
 	},
 	{
 		MENUITEMTYPE_CHECKBOX,

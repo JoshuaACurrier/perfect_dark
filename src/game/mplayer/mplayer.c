@@ -149,6 +149,8 @@ struct mpweapon g_MpWeapons[NUM_MPWEAPONS] = {
 	.aimsens = 1.f, \
 	.lookcurve = 2.f, \
 	.aimassist = 1.f, \
+	.aimstyle = AIMSTYLE_MODERN, \
+	.aimzoom = 1.25f, \
 }
 
 struct extplayerconfig g_PlayerExtCfg[MAX_LOCAL_PLAYERS] = { 
@@ -494,7 +496,9 @@ void mpPlayerSetDefaults(s32 playernum, bool autonames)
 		  OPTION_FORWARDPITCH
 #endif
 		| OPTION_SIGHTONSCREEN
+#ifdef PLATFORM_N64
 		| OPTION_AUTOAIM
+#endif
 		| OPTION_AMMOONSCREEN
 		| OPTION_SHOWGUNFUNCTION
 		| OPTION_HEADROLL

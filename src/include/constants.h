@@ -4770,6 +4770,9 @@ enum weaponnum {
 #define BUTTON_UI_ACCEPT      CONT_0010
 #define BUTTON_UI_CANCEL      CONT_0020
 
+#define AIMSTYLE_CLASSIC 0 // N64: aiming frees the crosshair to move around the screen
+#define AIMSTYLE_MODERN  1 // aiming zooms in a little and keeps the crosshair centred
+
 #define MOUSEAIM_CLASSIC 0 // crosshair moves around the screen in aim mode
 #define MOUSEAIM_LOCKED 1  // crosshair locked to the center of the screen in aim mode
 

@@ -205,5 +205,7 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 		configRegisterFloat(strFmt("Game.Player%d.AimSensitivity", i), &g_PlayerExtCfg[j].aimsens, 0.1f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.LookCurve", i), &g_PlayerExtCfg[j].lookcurve, 1.f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.AimAssist", i), &g_PlayerExtCfg[j].aimassist, 0.f, 1.f);
+		configRegisterInt(strFmt("Game.Player%d.AimStyle", i), &g_PlayerExtCfg[j].aimstyle, AIMSTYLE_CLASSIC, AIMSTYLE_MODERN);
+		configRegisterFloat(strFmt("Game.Player%d.AimZoom", i), &g_PlayerExtCfg[j].aimzoom, 1.f, 2.f);
 	}
 }
