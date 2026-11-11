@@ -25,8 +25,11 @@ if ($ProcId) { $procs = $procs | Where-Object { $_.Id -eq $ProcId } }
 foreach ($p in $procs) {
 	$h = $p.MainWindowHandle
 	if ($h -eq [IntPtr]::Zero) { continue }
-	$down = [IntPtr](1 -bor ($sc -shl 16))
-	$up = [IntPtr]([int64]1 -bor ([int64]$sc -shl 16) -bor (1 -shl 30) -bor ([int64]1 -shl 31))
+	# arrows, Insert/Delete, Home/End and PgUp/PgDn are extended keys (bit 24)
+	$ext = 0
+	if ($vk -ge 0x21 -and $vk -le 0x2E) { $ext = 1 -shl 24 }
+	$down = [IntPtr](1 -bor ($sc -shl 16) -bor $ext)
+	$up = [IntPtr]([int64]1 -bor ([int64]$sc -shl 16) -bor $ext -bor (1 -shl 30) -bor ([int64]1 -shl 31))
 	[KeySend]::PostMessage($h, 0x0100, [IntPtr]$vk, $down) | Out-Null
 	Start-Sleep -Milliseconds $HoldMs
 	[KeySend]::PostMessage($h, 0x0101, [IntPtr]$vk, $up) | Out-Null
