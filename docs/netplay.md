@@ -25,6 +25,26 @@ Expect nothing to work right.
 4. The game will start automatically.
 5. After the game is over, press Enter/Start on the stats screen and you will be kicked back to the `Waiting for host` screen, at which point the process repeats from step 3.
 
+### Co-op missions (2 players)
+
+1. Host: `Network Game` -> `Host Game` -> `Co-Operative Mission`, then pick the mission and difficulty as usual.
+   The host plays Joanna; the player who joins is the co-op buddy.
+2. Client: join as above. The mission starts for both when the host accepts it.
+3. The host's game runs all guards and mission scripts. Objectives, HUD messages, alarms,
+   countdown timers, music changes, guards spawned by the mission, and guards' dropped guns
+   and bodies are sent to the client.
+4. The end screen and `Retry` / next mission follow the host. Aborting on the client disconnects it.
+
+Known gaps in co-op: cutscenes are skipped; the buddy uses the Combat Sim character model;
+items handed out by mission scripts are not synced yet; only 2 players.
+
+### Unlocks
+
+While a network game is running, every Combat Sim arena, scenario, weapon and simulant type,
+and every co-op mission and difficulty up to Perfect Agent, can be picked even if the host's
+save hasn't unlocked them. The save itself is not changed. Set `Net.UnlockAll=0` in `pd.ini`
+to turn this off.
+
 ### Misc
 
 * Everyone has to have the same ROM. The game only compares the file name, but different regions in one game will definitely break everything.

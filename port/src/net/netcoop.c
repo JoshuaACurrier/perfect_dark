@@ -255,13 +255,21 @@ u32 netmsgSvcMissionStateRead(struct netbuf *src, struct netclient *srccl)
 	}
 
 	if (alarm && !alarmIsActive()) {
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: mission state: alarm on");
 		alarmActivate();
 	} else if (!alarm && alarmIsActive()) {
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: mission state: alarm off");
 		alarmDeactivate();
 	}
 
 	if (gas && !g_GasReleasing && g_GasReleaseTimer240 <= 0) {
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: mission state: gas released");
 		gasReleaseFromPos(&gaspos);
+	}
+
+	if (timeroff != g_CountdownTimerOff || running != (g_CountdownTimerRunning ? 1 : 0)) {
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: mission state: countdown %s, %s, %.0f s",
+			timeroff ? "hidden" : "shown", running ? "running" : "stopped", timer60 / 60.f);
 	}
 
 	g_CountdownTimerOff = timeroff;
@@ -295,6 +303,8 @@ u32 netmsgSvcMusicRead(struct netbuf *src, struct netclient *srccl)
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
 	}
+
+	sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: music op %u (%d)", op, a);
 
 	switch (op) {
 		case NETMUSIC_SETXREASON: musicSetXReason(a, b, c); break;

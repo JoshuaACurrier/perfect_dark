@@ -12,6 +12,7 @@
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
 //   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
 //   --net-autokill SECS      (host) every SECS seconds, shoot the chr nearest to one of the players
+//   --net-autoalarm SECS     (host) alarm and a 60 s countdown on at SECS, both off at 2*SECS
 //   --net-autopilot [SEED]   drive the local player with scripted input
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
 //   --net-lag MS             delay every outgoing packet by MS milliseconds
@@ -31,6 +32,7 @@
 #include "bss.h"
 #include "game/chraction.h"
 #include "game/menu.h"
+#include "game/propobj.h"
 #include "game/mplayer/mplayer.h"
 #include "lib/model.h"
 #include "lib/main.h"
@@ -49,6 +51,7 @@ static s32 g_NetAutoQuitSecs = 0;
 static s32 g_NetAutoAbortSecs = 0;
 static s32 g_NetAutoAborted = 0;
 static s32 g_NetAutoKillSecs = 0;
+static s32 g_NetAutoAlarmSecs = 0;
 static const char *g_NetAutoName = NULL;
 
 static s32 g_NetAutoStarted = 0;
@@ -79,6 +82,7 @@ void netAutoInit(void)
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
+	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
 
 	if (g_NetAutoSims > MAX_BOTS) {
 		g_NetAutoSims = MAX_BOTS;
@@ -348,11 +352,38 @@ static void netAutoTickKill(void)
 	chrDamageByImpact(best, 50.f, &dir, &gset, player->prop, HITPART_TORSO);
 }
 
+/* autoalarm: exercise the mission state sync */
+
+static void netAutoTickAlarm(void)
+{
+	static s32 phase = 0;
+
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoAlarmSecs <= 0 || !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_GAME) {
+		return;
+	}
+
+	if (phase == 0 && g_NetAutoGameTicks >= (u32)g_NetAutoAlarmSecs * 60) {
+		phase = 1;
+		sysLogPrintf(LOG_NOTE, "NET: autoalarm: alarm on, countdown 60 s");
+		alarmActivate();
+		countdownTimerSetValue60(60 * 60);
+		countdownTimerSetVisible(COUNTDOWNTIMERREASON_AI, true);
+		countdownTimerSetRunning(true);
+	} else if (phase == 1 && g_NetAutoGameTicks >= (u32)g_NetAutoAlarmSecs * 120) {
+		phase = 2;
+		sysLogPrintf(LOG_NOTE, "NET: autoalarm: alarm off, countdown hidden at %.0f s", countdownTimerGetValue60() / 60.f);
+		alarmDeactivate();
+		countdownTimerSetRunning(false);
+		countdownTimerSetVisible(COUNTDOWNTIMERREASON_AI, false);
+	}
+}
+
 void netAutoTick(void)
 {
 	netAutoTickStart();
 	netAutoTickDump();
 	netAutoTickKill();
+	netAutoTickAlarm();
 	netAutoTickQuit();
 }
 
