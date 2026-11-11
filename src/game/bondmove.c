@@ -636,6 +636,17 @@ void bmoveUpdateSpeedThetaControl(f32 value)
 }
 
 /**
+ * Controller look response: the original game squares the stick value (-1..1);
+ * this raises it to the player's LookCurve power instead (2 = original, 1 = linear).
+ */
+static f32 bmoveApplyLookCurve(f32 v)
+{
+	const f32 curve = PLAYER_EXTCFG().lookcurve;
+	const f32 mag = __builtin_powf(v >= 0.f ? v : -v, curve > 0.f ? curve : 2.f);
+	return v >= 0.f ? mag : -mag;
+}
+
+/**
  * Apply crosshair swivel based on camera movement with input detection
  */
 static void bmoveApplyCrosshairSwivel(struct movedata *movedata, f32 mlookscale, f32 *x, f32 *y)
@@ -1013,6 +1024,11 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 #ifndef PLATFORM_N64
 	if (allowmlook) {
 		inputMouseGetScaledDelta(&movedata.freelookdx, &movedata.freelookdy);
+		if (g_Vars.currentplayer->insightaimmode) {
+			// separate sensitivity while aiming (on top of the usual zoom scaling)
+			movedata.freelookdx *= PLAYER_EXTCFG().aimsens;
+			movedata.freelookdy *= PLAYER_EXTCFG().aimsens;
+		}
 		allowmcross = (PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_CLASSIC) &&
 			(movedata.freelookdx || movedata.freelookdy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
 		if (movedata.invertpitch) {
@@ -2289,11 +2305,15 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 					fVar25 = -1;
 				}
 
+#ifndef PLATFORM_N64
+				fVar25 = bmoveApplyLookCurve(fVar25);
+#else
 				if (fVar25 >= 0) {
 					fVar25 *= fVar25;
 				} else {
 					fVar25 *= -fVar25;
 				}
+#endif
 
 #ifndef PLATFORM_N64
 				fVar25 += movedata.freelookdy * mlookscale;
@@ -2330,11 +2350,15 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 			fVar25 = -1;
 		}
 
+#ifndef PLATFORM_N64
+		fVar25 = bmoveApplyLookCurve(fVar25);
+#else
 		if (fVar25 >= 0) {
 			fVar25 *= fVar25;
 		} else {
 			fVar25 *= -fVar25;
 		}
+#endif
 
 #ifndef PLATFORM_N64
 		fVar25 += movedata.freelookdx * mlookscale;
@@ -2423,6 +2447,14 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 
 			x = g_Vars.currentplayer->autoaimx;
 			y = g_Vars.currentplayer->autoaimy;
+
+#ifndef PLATFORM_N64
+			if (!followlockon) {
+				// aim assist strength: pull only part of the way to the target
+				x *= PLAYER_EXTCFG().aimassist;
+				y *= PLAYER_EXTCFG().aimassist;
+			}
+#endif
 
 			if (followlockon) {
 				bgunSwivel(x, y, PAL ? 0.899f : 0.915f, PAL ? 0.899f : 0.915f);

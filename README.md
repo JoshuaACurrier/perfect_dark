@@ -103,24 +103,28 @@ Support for one controller, two-stick configurations are enabled for 1.2.
 
 Note that the mouse only controls player 1.
 
-Controls can be rebound in `pd.ini`. Default control scheme is as follows:
+Controls can be rebound in `Options > Extended > Key Bindings` (actions are listed by name) or in `pd.ini`. The Bindings menu can reset to the Modern (default), Classic PC or N64 layout. Default control scheme (Modern):
 
-| Action           | Keyboard and mouse     | Xbox pad                 | N64 pad                   |
+| Action           | Keyboard and mouse     | Xbox pad (Modern)        | N64 pad                   |
 | -                | -                      | -                        | -                         |
-| Fire / Accept    | LMB/Space              | RT                       | Z Trigger                 |
+| Fire / Accept    | LMB                    | RT                       | Z Trigger                 |
 | Aim mode         | RMB/Z                  | LT                       | R Trigger                 |
-| Use / Cancel     | E                      | N/A                      | B                         |
-| Use / Accept     | N/A                    | A                        | A                         |
-| Crouch cycle     | N/A                    | LS Click                 | `0x80000000` (Extra)      |
+| Jump             | Space                  | A                        | `0x10000000` (Extra)      |
+| Use              | E                      | X                        | B                         |
+| Crouch cycle     | N/A                    | B / LS Click             | `0x80000000` (Extra)      |
 | Half-Crouch      | Shift                  | N/A                      | `0x40000000` (Extra)      |
-| Full-Crouch      | Control                | N/A                      | `0x20000000` (Extra)      |
+| Full-Crouch      | Control                | RS Click                 | `0x20000000` (Extra)      |
 | Reload           | R                      | X                        | X `(0x40)`                |
-| Previous weapon  | Mousewheel forward     | B                        | D-Left                    |
-| Next weapon      | Mousewheel back        | Y                        | Y `(0x80)`                |
-| Radial menu      | Q                      | LB                       | D-Down                    |
+| Previous weapon  | Mousewheel forward     | D-Left                   | D-Left                    |
+| Next weapon      | Mousewheel back        | Y / D-Right              | Y `(0x80)`                |
+| Radial menu      | Q                      | LB / Back                | D-Down                    |
 | Alt fire mode    | F                      | RB                       | L Trigger                 |
-| Alt-fire oneshot | `F + LMB` or `E + LMB` | `A + RT` or  `RB + RT`   | `A + Z`     or `L + Z`    |
-| Quick-detonate   | `E + Q`   or `E + R`   | `A + B`  or  `A + X`     | `A + D-Left`or `A + X`    |
+| Alt-fire oneshot | `F + LMB` or `E + LMB` | `X + RT` or  `RB + RT`   | `A + Z`     or `L + Z`    |
+| Quick-detonate   | `E + Q`   or `E + R`   | `X` (holding remote mines) | `A + D-Left`or `A + X`  |
+
+Jump is not in the original game; turn it off in `Options > Extended > Game > Jump` (`Game.Player1.Jump=0`).
+
+Aim feel (`Options > Extended > Mouse / Controller`): **Aim Sensitivity** scales mouse look while aiming, **Raw Input** (on by default) bypasses Windows pointer speed and acceleration, **Look Curve** sets the controller look response (Original = the game's squared curve, down to Linear), and **Aim Assist** sets how far auto-aim pulls the crosshair (needs the game's Auto-Aim option on).
 
 ## Building
 

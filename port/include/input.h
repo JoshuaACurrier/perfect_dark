@@ -213,6 +213,10 @@ void inputRumbleSetStrength(s32 cidx, f32 val);
 // locks the mouse cursor in the window and makes it invisible if argument is true
 void inputLockMouse(s32 lock);
 
+// raw mouse input while captured (1, default) or Windows pointer speed/acceleration (0)
+s32 inputMouseGetRawInput(void);
+void inputMouseSetRawInput(s32 raw);
+
 // returns the current state of the above
 s32 inputMouseIsLocked(void);
 

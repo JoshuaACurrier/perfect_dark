@@ -86,6 +86,8 @@ static s32 mouseWheel = 0;
 
 static s32 mouseLocked = 0;
 static s32 mouseLockMode = MLOCK_AUTO;
+// raw mouse movement while captured (default); 0 = go through Windows pointer speed / acceleration
+static s32 mouseRawInput = 1;
 static u64 mouseCursorTime = 0;
 static s32 mouseShowCursor = 1;
 
@@ -1310,7 +1312,30 @@ s32 inputButtonPressed(s32 idx, u32 contbtn)
 void inputLockMouse(s32 lock)
 {
 	mouseLocked = !!lock;
+	if (mouseLocked) {
+		// SDL reads raw mouse input in relative mode; warping the cursor instead
+		// (and applying the system scale) gives the Windows pointer speed and acceleration
+		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, mouseRawInput ? "0" : "1");
+#ifdef SDL_HINT_MOUSE_RELATIVE_SYSTEM_SCALE
+		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_SYSTEM_SCALE, mouseRawInput ? "0" : "1");
+#endif
+	}
 	SDL_SetRelativeMouseMode(mouseLocked);
+}
+
+s32 inputMouseGetRawInput(void)
+{
+	return mouseRawInput;
+}
+
+void inputMouseSetRawInput(s32 raw)
+{
+	mouseRawInput = !!raw;
+	if (mouseLocked) {
+		// re-enter relative mode so the change takes effect now
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+		inputLockMouse(1);
+	}
 }
 
 s32 inputMouseIsLocked(void)
@@ -1602,6 +1627,7 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 	configRegisterInt("Input.FirstGamepadNum", &firstController, 0, 3);
 	configRegisterInt("Input.UseHIDAPI", &useHIDAPI, 0, 1);
 	configRegisterInt("Input.UseRawInput", &useRawInput, 0, 1);
+	configRegisterInt("Input.MouseRawInput", &mouseRawInput, 0, 1);
 
 	char secname[] = "Input.Player1.Binds";
 	char keyname[256] = { 0 };

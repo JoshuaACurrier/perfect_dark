@@ -6186,6 +6186,9 @@ struct extplayerconfig {
 	s32 crosshairhealth;
 	s32 usereloads;
 	s32 jump; // the Jump button works (not in the original game)
+	f32 aimsens;   // mouse look speed multiplier while aiming (R / right mouse)
+	f32 lookcurve; // controller look response: stick^lookcurve (2 = the original game)
+	f32 aimassist; // how far auto-aim pulls the crosshair to a target, 0..1 (1 = the original game)
 };
 
 struct setupblock {

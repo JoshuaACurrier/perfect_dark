@@ -9,6 +9,7 @@
 #include "game/mainmenu.h"
 #include "game/menu.h"
 #include "game/gamefile.h"
+#include "game/options.h"
 #include "game/player.h"
 #include "lib/joy.h"
 #include "video.h"
@@ -277,6 +278,37 @@ static MenuItemHandlerResult menuhandlerRadialMenuSpeed(s32 operation, struct me
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerMouseRawInput(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return inputMouseGetRawInput();
+	case MENUOP_SET:
+		inputMouseSetRawInput(data->checkbox.value);
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerAimSensitivity(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	// slider 10..300 = 0.10x..3.00x
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_PlayerExtCfg[g_ExtMenuPlayer].aimsens * 100.f + 0.5f;
+		break;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].aimsens = (data->slider.value < 10 ? 10 : data->slider.value) / 100.f;
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		sprintf(data->slider.label, "%.2fx", (data->slider.value < 10 ? 10 : data->slider.value) / 100.f);
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_CHECKBOX,
@@ -311,6 +343,14 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 		menuhandlerMenuMouseControl,
 	},
 	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Raw Input",
+		0,
+		menuhandlerMouseRawInput,
+	},
+	{
 		MENUITEMTYPE_SEPARATOR,
 		0,
 		0,
@@ -333,6 +373,14 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 		(uintptr_t)"Mouse Speed Y",
 		3000,
 		menuhandlerMouseSpeedY,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Aim Sensitivity",
+		300,
+		menuhandlerAimSensitivity,
 	},
 	{
 		MENUITEMTYPE_SLIDER,
@@ -616,6 +664,50 @@ static MenuItemHandlerResult menuhandlerController(s32 operation, struct menuite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerLookCurve(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	// slider 0..200 = exponent 1.0..3.0
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = (g_PlayerExtCfg[g_ExtMenuPlayer].lookcurve - 1.f) * 100.f + 0.5f;
+		break;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].lookcurve = 1.f + data->slider.value / 100.f;
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		if (data->slider.value == 0) {
+			sprintf(data->slider.label, "Linear");
+		} else if (data->slider.value == 100) {
+			sprintf(data->slider.label, "Original");
+		} else {
+			sprintf(data->slider.label, "%.2f", 1.f + data->slider.value / 100.f);
+		}
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerAimAssist(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		// only matters with the game's Auto-Aim option on
+		return !optionsGetAutoAim(g_ExtMenuPlayer);
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_PlayerExtCfg[g_ExtMenuPlayer].aimassist * 100.f + 0.5f;
+		break;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].aimassist = data->slider.value / 100.f;
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		sprintf(data->slider.label, "%d%%", data->slider.value);
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedControllerMenuItems[] = {
 	{
 		MENUITEMTYPE_DROPDOWN,
@@ -656,6 +748,22 @@ struct menuitem g_ExtendedControllerMenuItems[] = {
 		(uintptr_t)"Vibration",
 		10,
 		menuhandlerVibration,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Look Curve",
+		200,
+		menuhandlerLookCurve,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Aim Assist",
+		100,
+		menuhandlerAimAssist,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,
