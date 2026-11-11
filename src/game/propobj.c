@@ -2415,6 +2415,12 @@ void objFree(struct defaultobj *obj, bool freeprop, bool canregen)
 {
 	struct prop *child;
 
+#ifndef PLATFORM_N64
+	if (freeprop && obj->prop) {
+		netmsgOnPropFree(obj->prop);
+	}
+#endif
+
 	if (obj->type == OBJTYPE_WEAPON) {
 		struct weaponobj *weapon = (struct weaponobj *) obj;
 
@@ -7599,6 +7605,14 @@ s32 projectileTick(struct defaultobj *obj, bool *embedded)
 
 				if (stop) {
 					objFreeProjectile(obj);
+
+#ifndef PLATFORM_N64
+					if (g_NetMode == NETMODE_SERVER && prop->syncid && !g_Vars.normmplayerisrunning) {
+						// it came to rest; clients simulated the fall themselves and may
+						// have ended up somewhere else (or through the floor)
+						netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+					}
+#endif
 
 					if (obj->type == OBJTYPE_WEAPON) {
 						struct weaponobj *weapon = (struct weaponobj *) obj;
@@ -14729,6 +14743,11 @@ bool objDrop(struct prop *prop, bool lazy)
 #ifndef PLATFORM_N64
 		if (g_NetMode == NETMODE_SERVER && prop->syncid && parent->type == PROPTYPE_CHR
 				&& parent->chr && !parent->chr->aibot) {
+			if (prop->syncid > (u32)g_Vars.maxprops) {
+				// made mid-stage (e.g. the gun of a guard a script spawned): clients
+				// only have a stand-in without a syncid, so create the real one there
+				netmsgSvcPropSpawnWrite(&g_NetMsgRel, prop);
+			}
 			// clients drop it too (SVC_CHR_DROP), but from their own animation pose;
 			// send where it really let go and how fast it's flying
 			netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);

@@ -15251,6 +15251,10 @@ struct prop *chrSpawnAtCoord(s32 bodynum, s32 headnum, struct coord *pos, RoomNu
 						chr->noblood = true;
 					}
 
+#ifndef PLATFORM_N64
+					netmsgOnChrSpawn(prop, spawnflags);
+#endif
+
 					return prop;
 				}
 

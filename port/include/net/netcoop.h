@@ -20,5 +20,19 @@ void netcoopForwardHudmsg(const char *text, s32 type, u32 flags);
 
 u32 netmsgSvcObjectivesRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcHudmsgRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcMissionStateRead(struct netbuf *src, struct netclient *srccl);
+
+// server: a mission script changed the music; clients do the same
+#define NETMUSIC_SETXREASON   0
+#define NETMUSIC_UNSETXREASON 1
+#define NETMUSIC_ISOLATED     2
+#define NETMUSIC_DEFAULT      3
+#define NETMUSIC_CUTSCENE     4
+#define NETMUSIC_ENDCUTSCENE  5
+#define NETMUSIC_AMBIENT      6
+#define NETMUSIC_ENDAMBIENT   7
+#define NETMUSIC_PRIMARY      8
+void netcoopMusic(u8 op, s32 a, s32 b, s32 c);
+u32 netmsgSvcMusicRead(struct netbuf *src, struct netclient *srccl);
 
 #endif

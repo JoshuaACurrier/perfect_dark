@@ -21,14 +21,18 @@
 #define SVC_PROP_USE      0x34 // door/lift/etc was used
 #define SVC_PROP_DOOR     0x35 // door state changed
 #define SVC_PROP_LIFT     0x36 // lift state changed
+#define SVC_PROP_REMOVE   0x37 // object in the world was freed (mission games)
 #define SVC_CHR_MOVE      0x40 // chr snapshots (position, animation, aim)
 #define SVC_CHR_SHOT      0x41 // chr fired a shot
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
 #define SVC_CHR_DROP      0x44 // guard dropped something it was holding or carrying
 #define SVC_CHR_REMOVE    0x45 // guard was removed (e.g. its corpse faded out)
+#define SVC_CHR_SPAWN     0x46 // a mission script spawned a guard
 #define SVC_OBJECTIVES    0x50 // objective statuses changed
 #define SVC_HUDMSG        0x51 // hud message from a mission script
+#define SVC_MISSIONSTATE  0x52 // alarm, gas and countdown timer
+#define SVC_MUSIC         0x53 // a mission script changed the music
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing
@@ -81,6 +85,10 @@ void netmsgOnChrDropItem(struct prop *chrprop, struct prop *item, u32 droptype);
 u32 netmsgSvcChrDropRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnChrRemove(struct prop *chrprop);
 u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl);
+void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags);
+u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl);
+void netmsgOnPropFree(struct prop *prop);
+u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);
 u32 netmsgSvcChrShotRead(struct netbuf *src, struct netclient *srccl);

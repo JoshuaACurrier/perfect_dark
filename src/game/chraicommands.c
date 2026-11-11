@@ -54,6 +54,11 @@
 
 #ifndef PLATFORM_N64
 #include "game/mplayer/mplayer.h"
+#include "net/netcoop.h"
+// online co-op: clients don't run scripts, so the server forwards music changes
+#define NETMUSIC(op, a, b, c) netcoopMusic(op, a, b, c)
+#else
+#define NETMUSIC(op, a, b, c)
 #endif
 
 /**
@@ -5618,6 +5623,7 @@ bool aiPlayXTrack(void)
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 	g_Vars.aioffset += 5;
 	musicSetXReason((s8)cmd[2], cmd[3], cmd[4]);
+	NETMUSIC(NETMUSIC_SETXREASON, (s8)cmd[2], cmd[3], cmd[4]);
 
 	return false;
 }
@@ -5630,6 +5636,7 @@ bool aiStopXTrack(void)
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 	g_Vars.aioffset += 3;
 	musicUnsetXReason((s8)cmd[2]);
+	NETMUSIC(NETMUSIC_UNSETXREASON, (s8)cmd[2], 0, 0);
 
 	return false;
 }
@@ -5649,6 +5656,8 @@ bool aiPlayTrackIsolated(void)
 		musicPlayTrackIsolated(cmd[2]);
 	}
 
+	NETMUSIC(NETMUSIC_ISOLATED, cmd[2], 0, 0);
+
 	g_Vars.aioffset += 3;
 
 	return false;
@@ -5661,6 +5670,7 @@ bool aiPlayDefaultTracks(void)
 {
 	g_Vars.aioffset += 2;
 	musicPlayDefaultTracks();
+	NETMUSIC(NETMUSIC_DEFAULT, 0, 0, 0);
 
 	return false;
 }
@@ -5672,6 +5682,7 @@ bool aiPlayCutsceneTrack(void)
 {
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 	musicStartCutscene(cmd[2]);
+	NETMUSIC(NETMUSIC_CUTSCENE, cmd[2], 0, 0);
 	g_Vars.aioffset += 3;
 
 	return false;
@@ -5684,6 +5695,7 @@ bool aiStopCutsceneTrack(void)
 {
 	g_Vars.aioffset += 2;
 	musicEndCutscene();
+	NETMUSIC(NETMUSIC_ENDCUTSCENE, 0, 0, 0);
 
 	return false;
 }
@@ -5695,6 +5707,7 @@ bool aiPlayTemporaryTrack(void)
 {
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 	musicStartTemporaryAmbient(cmd[2]);
+	NETMUSIC(NETMUSIC_AMBIENT, cmd[2], 0, 0);
 	g_Vars.aioffset += 3;
 
 	return false;
@@ -5707,6 +5720,7 @@ bool aiStopAmbientTrack(void)
 {
 	g_Vars.aioffset += 2;
 	musicEndTemporaryAmbient();
+	NETMUSIC(NETMUSIC_ENDAMBIENT, 0, 0, 0);
 
 	return false;
 }
@@ -9824,6 +9838,7 @@ bool aiPlayTemporaryPrimaryTrack(void)
 {
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 	musicStartTemporaryPrimary(cmd[2]);
+	NETMUSIC(NETMUSIC_PRIMARY, cmd[2], 0, 0);
 	g_Vars.aioffset += 3;
 
 	return false;

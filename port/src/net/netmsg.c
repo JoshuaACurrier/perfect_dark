@@ -9,6 +9,10 @@
 #include "game/mplayer/mplayer.h"
 #include "game/chr.h"
 #include "game/chraction.h"
+#include "game/body.h"
+#include "game/modelmgr.h"
+#include "lib/ailist.h"
+#include "net/netchr.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -984,6 +988,11 @@ u32 netmsgSvcPropMoveRead(struct netbuf *src, struct netclient *srccl)
 	}
 
 	if (!(flags & (1 << 1))) {
+		if (!prop->parent && (prop->obj->hidden & OBJHFLAG_PROJECTILE) && !g_Vars.normmplayerisrunning) {
+			// it has come to rest on the server; stop our own copy of the fall here
+			objFreeProjectile(prop->obj);
+			func0f069c70(prop->obj, true, true);
+		}
 		return src->error;
 	}
 
@@ -1584,6 +1593,11 @@ u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 		return src->error;
 	}
 
+	if (!chrprop || !chrprop->chr) {
+		// we don't have this chr (any more); not worth dropping the rest of the packet over
+		return src->error;
+	}
+
 	const bool damageshield = (flags & (1 << 0)) != 0;
 	const bool explosion = (flags & (1 << 1)) != 0;
 
@@ -1716,6 +1730,10 @@ void netmsgOnChrDropItem(struct prop *chrprop, struct prop *item, u32 droptype)
 	if (!netmsgIsSyncedGuard(chrprop) || !item || !item->syncid) {
 		return;
 	}
+	if (item->syncid > (u32)g_Vars.maxprops) {
+		// made mid-stage, clients don't have it; objDrop sends SVC_PROP_SPAWN for it instead
+		return;
+	}
 	netbufWriteU8(&g_NetMsgRel, SVC_CHR_DROP);
 	netbufWritePropPtr(&g_NetMsgRel, chrprop);
 	netbufWritePropPtr(&g_NetMsgRel, item);
@@ -1740,8 +1758,10 @@ u32 netmsgSvcChrDropRead(struct netbuf *src, struct netclient *srccl)
 	// same as the server, but let go of it right away instead of on the chr's next tick:
 	// the server's SVC_PROP_MOVE with where and how fast it was thrown comes right
 	// behind this, and it has to land on a prop that's already loose
+	// (just this item, the same way objDropRecursively does each child)
 	objSetDropped(item, droptype);
-	objDropRecursively(chrprop, false);
+	objDropRecursively(item, false);
+	objDrop(item, false);
 
 	return src->error;
 }
@@ -1768,7 +1788,131 @@ u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl)
 
 	if (netmsgIsSyncedGuard(chrprop)) {
 		// the chr's next tick removes it (and drops whatever it was dropping)
+		netchrAllowRemove(chrprop->chr);
 		chrprop->chr->hidden |= CHRHFLAG_DELETING;
+	}
+
+	return src->error;
+}
+
+/* guards spawned by mission scripts */
+
+void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	if (!prop || prop->type != PROPTYPE_CHR || !prop->chr || prop->chr->aibot || !prop->syncid) {
+		return;
+	}
+
+	struct chrdata *chr = prop->chr;
+	sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: chr %d spawned mid-stage, syncid %u", chr->chrnum, prop->syncid);
+	netbufWriteU8(&g_NetMsgRel, SVC_CHR_SPAWN);
+	netbufWriteU32(&g_NetMsgRel, prop->syncid);
+	netbufWriteS16(&g_NetMsgRel, chr->bodynum);
+	netbufWriteS16(&g_NetMsgRel, chr->headnum);
+	netbufWriteS16(&g_NetMsgRel, chr->chrnum);
+	netbufWriteU32(&g_NetMsgRel, spawnflags);
+	netbufWriteCoord(&g_NetMsgRel, &prop->pos);
+	netbufWriteRooms(&g_NetMsgRel, prop->rooms, ARRAYCOUNT(prop->rooms));
+	netbufWriteF32(&g_NetMsgRel, chrGetInverseTheta(chr));
+}
+
+u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u32 syncid = netbufReadU32(src);
+	const s16 bodynum = netbufReadS16(src);
+	const s16 headnum = netbufReadS16(src);
+	const s16 chrnum = netbufReadS16(src);
+	const u32 spawnflags = netbufReadU32(src);
+	struct coord pos; netbufReadCoord(src, &pos);
+	RoomNum rooms[8] = { -1 }; netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
+	const f32 angle = netbufReadF32(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		if (g_Vars.props[i].syncid == syncid) {
+			// already have it
+			return src->error;
+		}
+	}
+
+	struct model *model = bodyAllocateModel(bodynum, headnum, spawnflags);
+	if (!model) {
+		sysLogPrintf(LOG_WARNING, "NET: SVC_CHR_SPAWN: could not allocate body %d head %d", bodynum, headnum);
+		return src->error;
+	}
+
+	// the AI list doesn't matter, clients don't run AI
+	struct prop *prop = chrAllocate(model, &pos, rooms, angle, ailistFindById(GAILIST_IDLE));
+	if (!prop) {
+		modelmgrFreeModel(model);
+		sysLogPrintf(LOG_WARNING, "NET: SVC_CHR_SPAWN: no free chr slot for syncid %u", syncid);
+		return src->error;
+	}
+
+	// same as chrSpawnAtCoord
+	propActivateThisFrame(prop);
+	propEnable(prop);
+
+	struct chrdata *chr = prop->chr;
+	chr->headnum = headnum;
+	chr->bodynum = bodynum;
+	chr->race = bodyGetRace(bodynum);
+	chr->flags = 0;
+	chr->flags2 = 0;
+	chr->hidden2 |= CHRH2FLAG_SPAWNED;
+	if (spawnflags & SPAWNFLAG_NOBLOOD) {
+		chr->noblood = true;
+	}
+
+	prop->syncid = syncid;
+	if (chrnum >= 0 && chrnum != chr->chrnum && !chrFindByLiteralId(chrnum)) {
+		chrSetChrnum(chr, chrnum);
+	}
+
+	netchrOnClientSpawn(chr);
+
+	return src->error;
+}
+
+/* world objects the server got rid of */
+
+void netmsgOnPropFree(struct prop *prop)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	// only loose things in the world; held items go with their holder, and
+	// simulant drops are freed by the same pickup/timeout code on both sides
+	if (!prop->syncid || prop->parent || !prop->obj || g_Vars.normmplayerisrunning) {
+		return;
+	}
+	netbufWriteU8(&g_NetMsgRel, SVC_PROP_REMOVE);
+	netbufWritePropPtr(&g_NetMsgRel, prop);
+}
+
+u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u32 syncid = netbufReadU32(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	// don't use netbufReadPropPtr: it's normal for the prop to be gone already (picked up)
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		struct prop *prop = &g_Vars.props[i];
+		if (prop->syncid == syncid) {
+			if (prop->obj && !prop->parent) {
+				prop->obj->hidden |= OBJHFLAG_DELETING;
+			}
+			break;
+		}
 	}
 
 	return src->error;

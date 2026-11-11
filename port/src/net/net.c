@@ -784,14 +784,18 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PROP_USE: rc = netmsgSvcPropUseRead(&cl->in, cl); break;
 			case SVC_PROP_DOOR: rc = netmsgSvcPropDoorRead(&cl->in, cl); break;
 			case SVC_PROP_LIFT: rc = netmsgSvcPropLiftRead(&cl->in, cl); break;
+			case SVC_PROP_REMOVE: rc = netmsgSvcPropRemoveRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
 			case SVC_CHR_DROP: rc = netmsgSvcChrDropRead(&cl->in, cl); break;
 			case SVC_CHR_REMOVE: rc = netmsgSvcChrRemoveRead(&cl->in, cl); break;
+			case SVC_CHR_SPAWN: rc = netmsgSvcChrSpawnRead(&cl->in, cl); break;
 			case SVC_CHR_MOVE: rc = netmsgSvcChrMoveRead(&cl->in, cl); break;
 			case SVC_CHR_SHOT: rc = netmsgSvcChrShotRead(&cl->in, cl); break;
 			case SVC_OBJECTIVES: rc = netmsgSvcObjectivesRead(&cl->in, cl); break;
 			case SVC_HUDMSG: rc = netmsgSvcHudmsgRead(&cl->in, cl); break;
+			case SVC_MISSIONSTATE: rc = netmsgSvcMissionStateRead(&cl->in, cl); break;
+			case SVC_MUSIC: rc = netmsgSvcMusicRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;

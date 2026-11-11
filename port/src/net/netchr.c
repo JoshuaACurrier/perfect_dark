@@ -75,6 +75,8 @@ struct netchr {
 	u8 life;
 	u8 locallife;       // last life number we applied
 	u8 applied;         // the puppet has been placed at least once
+	u8 removeok;        // the server said to remove this chr
+	u8 removewarned;
 };
 
 // per chr slot state on the client; on the server only the send bookkeeping is used
@@ -110,6 +112,39 @@ void netchrReset(void)
 		g_NetChrsNum = g_NumChrSlots;
 		g_NetChrs = calloc(g_NetChrsNum, sizeof(*g_NetChrs));
 		g_NetChrLives = calloc(g_NetChrsNum, 1);
+	}
+}
+
+void netchrAllowRemove(struct chrdata *chr)
+{
+	struct netchr *nc = netchrFor(chr);
+	if (nc) {
+		nc->removeok = true;
+	}
+}
+
+s32 netchrClientMayRemove(struct chrdata *chr)
+{
+	if (g_NetMode != NETMODE_CLIENT || !chr->prop || chr->prop->type != PROPTYPE_CHR || chr->aibot || !chr->prop->syncid) {
+		return true;
+	}
+	struct netchr *nc = netchrFor(chr);
+	if (!nc || nc->removeok) {
+		return true;
+	}
+	if (!nc->removewarned) {
+		nc->removewarned = true;
+		sysLogPrintf(LOG_NOTE, "NET: kept chr %d (syncid %u) that would have been removed locally", chr->chrnum, chr->prop->syncid);
+	}
+	return false;
+}
+
+void netchrOnClientSpawn(struct chrdata *chr)
+{
+	struct netchr *nc = netchrFor(chr);
+	if (nc) {
+		// forget whatever chr had this slot before; wait for the first snapshot
+		memset(nc, 0, sizeof(*nc));
 	}
 }
 

@@ -2464,6 +2464,13 @@ s32 chrTick(struct prop *prop)
 			}
 		}
 
+#ifndef PLATFORM_N64
+		if ((chr->hidden & CHRHFLAG_DELETING) && !netchrClientMayRemove(chr)) {
+			// only the server decides when a guard goes away (SVC_CHR_REMOVE)
+			chr->hidden &= ~(CHRHFLAG_DELETING | CHRHFLAG_DROPPINGITEM);
+		}
+#endif
+
 		if (chr->hidden & CHRHFLAG_DELETING) {
 			if (chr->hidden & CHRHFLAG_DROPPINGITEM) {
 				objDropRecursively(prop, true);
