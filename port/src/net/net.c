@@ -786,6 +786,8 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_PROP_LIFT: rc = netmsgSvcPropLiftRead(&cl->in, cl); break;
 			case SVC_CHR_DAMAGE: rc = netmsgSvcChrDamageRead(&cl->in, cl); break;
 			case SVC_CHR_DISARM: rc = netmsgSvcChrDisarmRead(&cl->in, cl); break;
+			case SVC_CHR_DROP: rc = netmsgSvcChrDropRead(&cl->in, cl); break;
+			case SVC_CHR_REMOVE: rc = netmsgSvcChrRemoveRead(&cl->in, cl); break;
 			case SVC_CHR_MOVE: rc = netmsgSvcChrMoveRead(&cl->in, cl); break;
 			case SVC_CHR_SHOT: rc = netmsgSvcChrShotRead(&cl->in, cl); break;
 			case SVC_OBJECTIVES: rc = netmsgSvcObjectivesRead(&cl->in, cl); break;
@@ -936,10 +938,12 @@ void netEndFrame(void)
 		}
 	}
 
+	// test automation; before the flush, so anything it makes the game send goes out this frame
+	// (the buffers are cleared at the start of the next frame)
+	netAutoTick();
+
 	// send position updates
 	netFlushSendBuffers();
-
-	netAutoTick();
 
 	// release packets held back by the lag simulator, if any
 	netSimFlush();

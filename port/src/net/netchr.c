@@ -5,7 +5,9 @@
 // Clients don't run AI for chrs at all; instead each chr becomes a "puppet"
 // that smoothly follows the latest snapshot. Shots are sent separately
 // (SVC_CHR_SHOT) so clients can show tracers, sparks and play sounds.
-// Damage and disarming already go through SVC_CHR_DAMAGE / SVC_CHR_DISARM.
+// Damage and disarming already go through SVC_CHR_DAMAGE / SVC_CHR_DISARM. Guards
+// letting go of things (death, disarm) and being removed are SVC_CHR_DROP /
+// SVC_CHR_REMOVE (netmsg.c), since clients never run the code that does that.
 
 #include <stdlib.h>
 #include <string.h>

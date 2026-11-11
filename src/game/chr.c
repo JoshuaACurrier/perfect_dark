@@ -2469,6 +2469,10 @@ s32 chrTick(struct prop *prop)
 				objDropRecursively(prop, true);
 			}
 
+#ifndef PLATFORM_N64
+			netmsgOnChrRemove(prop);
+#endif
+
 			chrRemove(prop, true);
 			return TICKOP_FREE;
 		}

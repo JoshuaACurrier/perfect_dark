@@ -25,6 +25,8 @@
 #define SVC_CHR_SHOT      0x41 // chr fired a shot
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
 #define SVC_CHR_DISARM    0x43 // chr's weapons were dropped
+#define SVC_CHR_DROP      0x44 // guard dropped something it was holding or carrying
+#define SVC_CHR_REMOVE    0x45 // guard was removed (e.g. its corpse faded out)
 #define SVC_OBJECTIVES    0x50 // objective statuses changed
 #define SVC_HUDMSG        0x51 // hud message from a mission script
 
@@ -74,6 +76,11 @@ u32 netmsgSvcChrDamageWrite(struct netbuf *dst, struct chrdata *chr, f32 damage,
 u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrDisarmWrite(struct netbuf *dst, struct chrdata *chr, struct prop *attacker, u8 weaponnum, f32 wpndamage, struct coord *wpnpos);
 u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl);
+
+void netmsgOnChrDropItem(struct prop *chrprop, struct prop *item, u32 droptype);
+u32 netmsgSvcChrDropRead(struct netbuf *src, struct netclient *srccl);
+void netmsgOnChrRemove(struct prop *chrprop);
+u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);
 u32 netmsgSvcChrShotRead(struct netbuf *src, struct netclient *srccl);

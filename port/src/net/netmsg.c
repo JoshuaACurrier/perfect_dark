@@ -1699,3 +1699,77 @@ u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl)
 
 	return src->error;
 }
+
+/* guards dropping things and being removed */
+
+static inline bool netmsgIsSyncedGuard(const struct prop *prop)
+{
+	// simulants handle their own drops (see botinv.c); players have their own messages
+	return prop && prop->type == PROPTYPE_CHR && prop->chr && !prop->chr->aibot && prop->syncid;
+}
+
+void netmsgOnChrDropItem(struct prop *chrprop, struct prop *item, u32 droptype)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	if (!netmsgIsSyncedGuard(chrprop) || !item || !item->syncid) {
+		return;
+	}
+	netbufWriteU8(&g_NetMsgRel, SVC_CHR_DROP);
+	netbufWritePropPtr(&g_NetMsgRel, chrprop);
+	netbufWritePropPtr(&g_NetMsgRel, item);
+	netbufWriteU8(&g_NetMsgRel, droptype);
+}
+
+u32 netmsgSvcChrDropRead(struct netbuf *src, struct netclient *srccl)
+{
+	struct prop *chrprop = netbufReadPropPtr(src);
+	struct prop *item = netbufReadPropPtr(src);
+	const u8 droptype = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	if (!netmsgIsSyncedGuard(chrprop) || !item || !item->obj || item->parent != chrprop) {
+		// already dropped here, or not something we know about
+		return src->error;
+	}
+
+	// same as the server, but let go of it right away instead of on the chr's next tick:
+	// the server's SVC_PROP_MOVE with where and how fast it was thrown comes right
+	// behind this, and it has to land on a prop that's already loose
+	objSetDropped(item, droptype);
+	objDropRecursively(chrprop, false);
+
+	return src->error;
+}
+
+void netmsgOnChrRemove(struct prop *chrprop)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	if (!netmsgIsSyncedGuard(chrprop)) {
+		return;
+	}
+	netbufWriteU8(&g_NetMsgRel, SVC_CHR_REMOVE);
+	netbufWritePropPtr(&g_NetMsgRel, chrprop);
+}
+
+u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl)
+{
+	struct prop *chrprop = netbufReadPropPtr(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	if (netmsgIsSyncedGuard(chrprop)) {
+		// the chr's next tick removes it (and drops whatever it was dropping)
+		chrprop->chr->hidden |= CHRHFLAG_DELETING;
+	}
+
+	return src->error;
+}

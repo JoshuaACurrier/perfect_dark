@@ -14268,6 +14268,11 @@ void objSetDropped(struct prop *prop, u32 droptype)
 	if (parent) {
 		struct defaultobj *obj = prop->obj;
 
+#ifndef PLATFORM_N64
+		// clients don't run guard AI, so tell them what the guard is letting go of
+		netmsgOnChrDropItem(parent, prop, droptype);
+#endif
+
 		func0f0685e4(prop);
 
 		if ((obj->hidden & OBJHFLAG_EMBEDDED) && obj->embedment->projectile) {
@@ -14720,6 +14725,15 @@ bool objDrop(struct prop *prop, bool lazy)
 				propSetDangerous(prop);
 			}
 		}
+
+#ifndef PLATFORM_N64
+		if (g_NetMode == NETMODE_SERVER && prop->syncid && parent->type == PROPTYPE_CHR
+				&& parent->chr && !parent->chr->aibot) {
+			// clients drop it too (SVC_CHR_DROP), but from their own animation pose;
+			// send where it really let go and how fast it's flying
+			netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+		}
+#endif
 
 		return true;
 	}
