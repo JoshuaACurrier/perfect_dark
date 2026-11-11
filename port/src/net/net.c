@@ -44,6 +44,11 @@ u32 g_NetServerOutRate = 128 * 1024;
 u32 g_NetServerPort = NET_DEFAULT_PORT;
 s32 g_NetServerInfoQuery = true;
 
+// in network games, every Combat Sim arena, scenario, weapon and simulant,
+// and every co-op mission and difficulty, can be picked without unlocking it
+// first; the local save file is not changed
+s32 g_NetUnlockAll = true;
+
 u32 g_NetClientUpdateRate = 1;
 u32 g_NetClientInRate = 128 * 1024;
 u32 g_NetClientOutRate = 128 * 1024;
@@ -1155,6 +1160,11 @@ Gfx *netDebugRender(Gfx *gdl)
 	return gdl;
 }
 
+s32 netIsUnlockAll(void)
+{
+	return g_NetMode != NETMODE_NONE && g_NetUnlockAll;
+}
+
 PD_CONSTRUCTOR static void netConfigInit(void)
 {
 	configRegisterUInt("Net.LerpTicks", &g_NetInterpTicks, 0, 600);
@@ -1169,4 +1179,5 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterUInt("Net.Server.OutRate", &g_NetServerOutRate, 0, 10 * 1024 * 1024);
 	configRegisterUInt("Net.Server.UpdateFrames", &g_NetServerUpdateRate, 0, 60);
 	configRegisterInt("Net.Server.AllowInfoQuery", &g_NetServerInfoQuery, 0, 1);
+	configRegisterInt("Net.UnlockAll", &g_NetUnlockAll, 0, 1);
 }

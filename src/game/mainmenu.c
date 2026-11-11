@@ -1034,6 +1034,12 @@ bool isStageDifficultyUnlocked(s32 stageindex, s32 difficulty)
 	s32 s;
 	s32 d;
 
+#ifndef PLATFORM_N64
+	if (netIsUnlockAll() && difficulty <= DIFF_PA) {
+		return true;
+	}
+#endif
+
 	// Handle special missions
 	if (stageindex > SOLOSTAGEINDEX_SKEDARRUINS) {
 #if VERSION >= VERSION_NTSC_1_0
@@ -1942,6 +1948,12 @@ s32 getNumUnlockedSpecialStages(void)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	if (netIsUnlockAll()) {
+		count = ARRAYCOUNT(g_GameFile.besttimes[0]);
+	}
+#endif
+
 	if (g_MissionConfig.iscoop || g_MissionConfig.isanti) {
 		offsetforduel = 0;
 	} else {
@@ -1965,6 +1977,12 @@ s32 func0f104720(s32 value)
 			next = d + 1;
 		}
 	}
+
+#ifndef PLATFORM_N64
+	if (netIsUnlockAll()) {
+		next = ARRAYCOUNT(g_GameFile.besttimes[0]);
+	}
+#endif
 
 	if (next > value) {
 		return 17 + value;
@@ -2029,6 +2047,12 @@ MenuItemHandlerResult menuhandlerMissionList(s32 operation, struct menuitem *ite
 			}
 
 			data->list.value++;
+
+#ifndef PLATFORM_N64
+			if (netIsUnlockAll()) {
+				continue;
+			}
+#endif
 
 			if (!stageiscomplete) {
 				break;

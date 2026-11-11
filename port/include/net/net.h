@@ -147,6 +147,7 @@ void netStartFrame(void);
 void netEndFrame(void);
 
 s32 netStartServer(u16 port, s32 maxclients);
+s32 netIsUnlockAll(void);
 s32 netStartClient(const char *addr);
 
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan);

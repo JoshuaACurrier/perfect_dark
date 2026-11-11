@@ -19,6 +19,9 @@
 #include "lib/rng.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#endif
 
 u8 g_MpFeaturesForceUnlocked[40];
 u8 g_MpFeaturesUnlocked[80];
@@ -872,6 +875,12 @@ bool challengeIsFeatureUnlocked(s32 featurenum)
 		return true;
 	}
 
+#ifndef PLATFORM_N64
+	if (netIsUnlockAll()) {
+		return true;
+	}
+#endif
+
 	return (g_MpFeaturesUnlocked[featurenum] & 1) != 0;
 }
 
@@ -880,6 +889,12 @@ bool challengeIsFeatureUnlockedByPlayer(u32 numplayers, s32 featurenum)
 	if (featurenum == 0) {
 		return true;
 	}
+
+#ifndef PLATFORM_N64
+	if (netIsUnlockAll()) {
+		return true;
+	}
+#endif
 
 	return (g_MpFeaturesUnlocked[featurenum] & (2 << numplayers)) != 0;
 }
