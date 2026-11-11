@@ -87,6 +87,31 @@ def main():
               f"{100*off/len(errs):>5.1f}% {deadmis:>7} {100*actmis/len(errs):>6.1f}% "
               f"{100*animmis/len(errs):>5.1f}% {100*wpnmis/len(errs):>5.1f}%")
 
+    # things the client has that the host never had (e.g. a gun dropped twice)
+    extra = sorted(set(client) - set(host))
+    if extra:
+        print(f"\nclient-only syncids ({len(extra)}):")
+        for sid in extra:
+            cs = client[sid]
+            first = min(cs)
+            r = cs[first]
+            print(f"  {sid:>6} {TYPES.get(int(r['type']), r['type']):>7} first seen tick {first}, "
+                  f"weapon {r['weapon']}, at ({r['x']},{r['y']},{r['z']})")
+
+    # things that disappeared on one side only: compare the last tick each side saw them
+    hostlast = max((max(s) for s in host.values()), default=0)
+    clientlast = max((max(s) for s in client.values()), default=0)
+    endtick = min(hostlast, clientlast) - 3 * TICK_WINDOW
+    gone = []
+    for sid in sorted(set(host) & set(client)):
+        hl, cl = max(host[sid]), max(client[sid])
+        if (hl < endtick) != (cl < endtick):
+            gone.append((sid, hl, cl))
+    if gone:
+        print(f"\nremoved on one side only ({len(gone)}):")
+        for sid, hl, cl in gone:
+            print(f"  {sid:>6} last seen: host tick {hl}, client tick {cl}")
+
     if total:
         print(f"\noverall: {100*total_bad/total:.1f}% of samples more than {POS_OK} units off")
     return 0

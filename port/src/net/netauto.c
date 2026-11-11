@@ -11,6 +11,7 @@
 //   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
 //   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
+//   --net-autokill SECS      (host) every SECS seconds, shoot the chr nearest to one of the players
 //   --net-autopilot [SEED]   drive the local player with scripted input
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
 //   --net-lag MS             delay every outgoing packet by MS milliseconds
@@ -47,6 +48,7 @@ static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
 static s32 g_NetAutoAbortSecs = 0;
 static s32 g_NetAutoAborted = 0;
+static s32 g_NetAutoKillSecs = 0;
 static const char *g_NetAutoName = NULL;
 
 static s32 g_NetAutoStarted = 0;
@@ -76,6 +78,7 @@ void netAutoInit(void)
 	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
+	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
 
 	if (g_NetAutoSims > MAX_BOTS) {
 		g_NetAutoSims = MAX_BOTS;
@@ -269,13 +272,87 @@ static void netAutoTickDump(void)
 			chr->damage, weaponnum, prop->rooms[0]);
 	}
 
+	// guns lying in the world (dropped by chrs or placed by the stage), to catch
+	// drops that only happen on one side; activeprops runs on into pausedprops
+	for (struct prop *prop = g_Vars.activeprops; prop; prop = prop->next) {
+		if (prop->type != PROPTYPE_WEAPON || !prop->syncid || !prop->weapon) {
+			continue;
+		}
+		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,0,-1,-1,0,0,0,%d,%d\n",
+			g_NetTick, prop->syncid, prop->type, prop->pos.x, prop->pos.y, prop->pos.z,
+			prop->weapon->weaponnum, prop->rooms[0]);
+	}
+
 	fflush(g_NetDumpFile);
+}
+
+/* autokill: the host hits the guard nearest to a player every few seconds */
+
+static void netAutoTickKill(void)
+{
+	static u32 nextkill = 0;
+	static s32 victimplayer = 0;
+
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoKillSecs <= 0 || !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_GAME) {
+		return;
+	}
+
+	if (!nextkill) {
+		nextkill = g_NetAutoGameTicks + 5 * 60;
+	}
+	if (g_NetAutoGameTicks < nextkill) {
+		return;
+	}
+	nextkill = g_NetAutoGameTicks + (u32)g_NetAutoKillSecs * 60;
+
+	// alternate between the players so drops land near each of them
+	const s32 numplayers = PLAYERCOUNT();
+	victimplayer = (victimplayer + 1) % (numplayers > 0 ? numplayers : 1);
+	struct player *player = g_Vars.players[victimplayer];
+	if (!player || !player->prop) {
+		return;
+	}
+
+	struct chrdata *best = NULL;
+	f32 bestdist = 0.f;
+	for (s32 i = 0; i < g_NumChrSlots; ++i) {
+		struct chrdata *chr = &g_ChrSlots[i];
+		if (chr->chrnum < 0 || !chr->prop || !chr->model || chr->prop->type != PROPTYPE_CHR) {
+			continue;
+		}
+		if (chrIsDead(chr) || chr->actiontype == ACT_DIE || chr->actiontype == ACT_DEAD) {
+			continue;
+		}
+		const f32 dx = chr->prop->pos.x - player->prop->pos.x;
+		const f32 dy = chr->prop->pos.y - player->prop->pos.y;
+		const f32 dz = chr->prop->pos.z - player->prop->pos.z;
+		const f32 dist = dx * dx + dy * dy + dz * dz;
+		if (!best || dist < bestdist) {
+			best = chr;
+			bestdist = dist;
+		}
+	}
+
+	if (!best) {
+		return;
+	}
+
+	struct gset gset = { WEAPON_FALCON2, 0, 0, FUNC_PRIMARY };
+	struct coord dir = {
+		best->prop->pos.x - player->prop->pos.x,
+		0.f,
+		best->prop->pos.z - player->prop->pos.z,
+	};
+
+	sysLogPrintf(LOG_NOTE, "NET: autokill: player %d hits chr %d (syncid %u)", victimplayer, best->chrnum, best->prop->syncid);
+	chrDamageByImpact(best, 50.f, &dir, &gset, player->prop, HITPART_TORSO);
 }
 
 void netAutoTick(void)
 {
 	netAutoTickStart();
 	netAutoTickDump();
+	netAutoTickKill();
 	netAutoTickQuit();
 }
 
