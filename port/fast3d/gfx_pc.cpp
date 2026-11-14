@@ -31,6 +31,7 @@
 #include "gfx_rendering_api.h"
 #include "gfx_screen_config.h"
 #include "texpack.h"
+#include "gfx_opengl.h"
 
 uintptr_t gfxFramebuffer;
 
@@ -2539,6 +2540,29 @@ static void gfx_run_dl(Gfx* cmd) {
                 gfx_flush();
                 gfx_rapi->clear_framebuffer(false, true);
                 break;
+            case G_POSTFX_EXT:
+                // only on the main picture, not while the game draws into one of its own framebuffers
+                if (game_renders_to_framebuffer && !fbActive && gfx_opengl_postfx_wanted()) {
+                    gfx_flush();
+                    gfx_opengl_postfx(rsp.P_matrix, rdp.viewport.x, rdp.viewport.y, rdp.viewport.width, rdp.viewport.height);
+                    // it changed GL state behind our back: forget what we think is set
+                    if (rendering_state.shader_program) {
+                        gfx_rapi->unload_shader(rendering_state.shader_program);
+                        rendering_state.shader_program = nullptr;
+                    }
+                    rendering_state.depth_mode = 0xff;
+                    gfx_rapi->set_use_alpha(rendering_state.alpha_blend, rendering_state.modulate);
+                    rendering_state.viewport = {};
+                    rendering_state.scissor = {};
+                    rdp.viewport_or_scissor_changed = true;
+                    for (int t = 0; t < SHADER_MAX_TEXTURES; ++t) {
+                        if (rendering_state.textures[t]) {
+                            gfx_rapi->select_texture(t, rendering_state.textures[t]->second.texture_id,
+                                                     rendering_state.textures[t]->second.linear_filter);
+                        }
+                    }
+                }
+                break;
             case G_RDPPIPESYNC:
             case G_RDPFULLSYNC:
             case G_RDPLOADSYNC:
@@ -2647,7 +2671,9 @@ extern "C" void gfx_start_frame(void) {
 
     bool different_size = gfx_current_dimensions.width != gfx_current_game_window_viewport.width ||
                           gfx_current_dimensions.height != gfx_current_game_window_viewport.height;
-    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1)) {
+    // post-processing reads the scene's depth, so it needs the game in a framebuffer of ours too
+    const bool postfx = gfx_opengl_postfx_wanted();
+    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1 || postfx)) {
         game_renders_to_framebuffer = true;
         if (different_size) {
             gfx_rapi->update_framebuffer_parameters(game_framebuffer, gfx_current_dimensions.width,
@@ -2706,7 +2732,8 @@ extern "C" void gfx_run(Gfx* commands) {
         gfx_rapi->start_draw_to_framebuffer(0, 1);
         gfx_rapi->clear_framebuffer(true, true);
 
-        if (gfx_msaa_level > 1) {
+        if (gfx_msaa_level > 1 || gfx_opengl_postfx_wanted()) {
+            // (a blit; with MSAA off it just copies the picture to the window)
             bool different_size = gfx_current_dimensions.width != gfx_current_game_window_viewport.width ||
                                   gfx_current_dimensions.height != gfx_current_game_window_viewport.height;
 

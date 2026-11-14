@@ -7,6 +7,7 @@ script their input, and compare what each copy thinks the world looks like.
 |---|---|
 | `nettest.sh` | Starts a host and N clients with separate save dirs and logs, waits, kills them, prints the `NET:` log lines. `-d SECS` starts the last client late, to test joining mid-match. `-s` leaves sound on (it's off by default); at autoquit the log then says how many voice blocks went through the 3D audio path. |
 | `smooth.py` | How smoothly chrs move in a `--net-dump` file (dump with `--net-dump-interval 1`): speed spikes, back-and-forth jitter and distance travelled. Run it on the host's dump and a client's; the client's should look like the host's. |
+| `imgdiff.py` | Compares two screenshots of the same view (brightness, difference, a grid of what got brighter or darker), for checking what a video option changed. No image library needed. |
 | `desync.py` | Compares two `--net-dump` files (host vs client): how far apart every chr and loose gun is, plus props that only the client has or that vanished on one side. |
 | `winshot.ps1` | Screenshots each game window (not the desktop); skips hung windows. |
 | `sendkey.ps1` | Sends a key press to the game windows without focusing them. |

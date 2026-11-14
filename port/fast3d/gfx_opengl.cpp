@@ -1037,6 +1037,8 @@ static void gfx_opengl_init(void) {
     framebuffers.resize(1); // for the default screen buffer
 }
 
+#include "gfx_postfx.inc"
+
 static void gfx_opengl_on_resize(void) {
 }
 

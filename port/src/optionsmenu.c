@@ -14,6 +14,7 @@
 #include "game/cheats.h"
 #include "net/net.h"
 #include "hudext.h"
+#include "texpack.h"
 #include "game/propsnd.h"
 #include "lib/snd.h"
 #include "lib/joy.h"
@@ -965,6 +966,48 @@ static MenuItemHandlerResult menuhandlerFramerateLimit(s32 operation, struct men
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerTexturePack(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		return texpackGetNumTextures() <= 0; // nothing in texture-packs/
+	case MENUOP_GET:
+		return g_TexpackEnabled;
+	case MENUOP_SET:
+		g_TexpackEnabled = data->checkbox.value;
+		videoResetTextureCache(); // so everything on screen is uploaded again
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerAmbientOcclusion(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return gfx_postfx_ssao;
+	case MENUOP_SET:
+		gfx_postfx_ssao = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerBloom(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return gfx_postfx_bloom;
+	case MENUOP_SET:
+		gfx_postfx_bloom = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerMSAA(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	s32 msaa;
@@ -1335,6 +1378,30 @@ struct menuitem g_ExtendedVideoMenuItems[] = {
 		(uintptr_t)"Detail Textures",
 		0,
 		menuhandlerTexDetail,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"HD Texture Pack",
+		0,
+		menuhandlerTexturePack,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Ambient Occlusion",
+		0,
+		menuhandlerAmbientOcclusion,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Bloom",
+		0,
+		menuhandlerBloom,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,

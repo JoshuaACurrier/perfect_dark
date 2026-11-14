@@ -63,6 +63,12 @@ void videoSetTextureFilter(u32 filter);
 void videoSetTextureFilter2D(s32 filter);
 void videoSetAnisotropicFilter(u32 filter);
 void videoSetDetailTextures(s32 detail);
+
+// post-processing switches (port/fast3d/gfx_postfx.inc)
+extern int gfx_postfx_ssao;
+extern float gfx_postfx_ssao_strength;
+extern int gfx_postfx_bloom;
+extern float gfx_postfx_bloom_strength;
 void videoSetDisplayMode(const s32 index);
 void videoSetVsync(const s32 vsync);
 void videoSetFramerateLimit(const s32 limit);

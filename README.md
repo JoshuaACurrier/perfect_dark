@@ -134,6 +134,19 @@ Also in `Options > Extended > Game`, all on by default and not in the original g
 
 In Combat Simulator the death screen says who killed you and counts down to an automatic respawn
 (`Options > Extended > Auto Respawn`, `Game.MpAutoRespawn`, seconds, 0 = off; pressing fire still respawns as soon as the screen fades).
+### Visuals
+
+All three are in `Options > Extended > Video` and on by default:
+* **HD Texture Pack** (`Video.TexturePacks`): loads replacement textures from a community pack. A pack is a folder of images named after the game's
+  texture numbers (`0a3f.png` / `.jpg`), such as [PD Forever Plus HD](https://github.com/retro-foundry/Perfect-Dark-Plus-HD-Textures/releases).
+  Put the pack's folder inside a `texture-packs` folder next to the game data (the `--basedir` folder), the save folder or the exe.
+  With several packs, `Video.TexturePack` in `pd.ini` names the folder to use (default: the first in name order).
+  Not handled yet: the packs' per-model folders (textures stored inside model files) and font folders. Packs made for XBLA models need those models, which this port doesn't have.
+* **Ambient Occlusion** (`Video.AmbientOcclusion`, strength `Video.AmbientOcclusionStrength` 0..2): soft shadows where surfaces meet (corners, under ledges, around characters).
+* **Bloom** (`Video.Bloom`, strength `Video.BloomStrength` 0..2): bright lights, signs, muzzle flashes and explosions glow.
+
+Ambient occlusion and bloom need OpenGL 3.0 and `Video.FramebufferEffects`; they apply to the 3D scene only, not the HUD or menus.
+
 **3D Audio (Headphones)** (`Options > Extended > Audio`, `Audio.Headphones3D`, on by default) places every positional sound (gunfire, footsteps, voices
 of guards, doors, ...) all the way around you instead of just left to right. Each ear gets its own copy of the sound, as a head would hear it: later and
 duller in the far ear, and with less treble in both when it comes from behind. It's a model of a head, not a measured one, and it has no cue for above

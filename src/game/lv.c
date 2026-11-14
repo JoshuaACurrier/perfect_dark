@@ -1405,6 +1405,10 @@ Gfx *lvRender(Gfx *gdl)
 					gdl = nbombsRender(gdl);
 				}
 
+#ifndef PLATFORM_N64
+				gDPPostFxEXT(gdl++);
+#endif
+
 				if (var80075d60 == 2) {
 					gdl = playerRenderHud(gdl);
 

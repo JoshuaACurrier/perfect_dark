@@ -591,6 +591,10 @@ PD_CONSTRUCTOR static void videoConfigInit(void)
 	configRegisterInt("Video.DetailTextures", &texDetail, 0, 1);
 	configRegisterInt("Video.MipmapFilter", &texMipmapFilter, 0, 2);
 	configRegisterInt("Video.AnisotropicFilter", &texAnisotropicFilter, 0, 16);
+	configRegisterInt("Video.AmbientOcclusion", &gfx_postfx_ssao, 0, 1);
+	configRegisterFloat("Video.AmbientOcclusionStrength", &gfx_postfx_ssao_strength, 0.f, 2.f);
+	configRegisterInt("Video.Bloom", &gfx_postfx_bloom, 0, 1);
+	configRegisterFloat("Video.BloomStrength", &gfx_postfx_bloom_strength, 0.f, 2.f);
 	configRegisterFloat("Video.GlareBrightness", &vidGlareBrightness, 0.f, 1.f);
 	configRegisterFloat("Video.OverexposureScale", &vidOverexposureScale, 0.f, 1.f);
 }

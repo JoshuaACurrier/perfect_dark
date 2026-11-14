@@ -43,6 +43,12 @@ Perfect Dark Online test build $HASH
 3. Pick or create an agent, then choose Network Game from the menu.
    Host Game to host, Join Game to join (type the host's address).
 Alt+Enter toggles fullscreen. ~ opens the console (chat), F9 shows network stats.
+
+Optional HD textures: download "PD Forever Plus HD" from
+https://github.com/retro-foundry/Perfect-Dark-Plus-HD-Textures/releases
+and unzip it so its folder of images (0003.png, ...) sits inside a folder called
+texture-packs next to pd.x86_64.exe, e.g. texture-packs/PD Forever Plus HD v0.10/0003.png
+Switches for it, Ambient Occlusion and Bloom are in Options > Extended > Video.
 EOF
 
 rm -f "$OUT/$NAME.zip"
