@@ -11,6 +11,7 @@
 #include "game/gamefile.h"
 #include "game/options.h"
 #include "game/player.h"
+#include "game/cheats.h"
 #include "lib/joy.h"
 #include "video.h"
 #include "input.h"
@@ -2164,6 +2165,19 @@ static MenuItemHandlerResult menuhandlerOpenControllerMenu(s32 operation, struct
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerUnlockAllCheats(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_CheatsUnlockAll;
+	case MENUOP_SET:
+		g_CheatsUnlockAll = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerOpenGameMenu(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
@@ -2230,6 +2244,14 @@ struct menuitem g_ExtendedMenuItems[] = {
 		(uintptr_t)"Key Bindings\n",
 		0,
 		menuhandlerOpenBindsMenu,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Unlock All Cheats",
+		0,
+		menuhandlerUnlockAllCheats,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,

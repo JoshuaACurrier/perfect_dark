@@ -105,10 +105,21 @@ struct cheat g_Cheats[] = {
 #endif
 };
 
+#ifndef PLATFORM_N64
+// Game.UnlockAllCheats: every cheat can be picked in the Cheats menu without earning it first
+s32 g_CheatsUnlockAll = true;
+#endif
+
 u32 cheatIsUnlocked(s32 cheat_id)
 {
 	struct cheat *cheat = &g_Cheats[cheat_id];
 	u32 unlocked = 0;
+
+#ifndef PLATFORM_N64
+	if (g_CheatsUnlockAll) {
+		return 1;
+	}
+#endif
 
 	if (cheat->flags & CHEATFLAG_FIRINGRANGE) {
 		if (frIsClassicWeaponUnlocked(cheat->time)) {

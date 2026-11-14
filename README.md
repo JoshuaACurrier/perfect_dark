@@ -44,6 +44,7 @@ There are minor graphics- and gameplay-related issues, and possibly occasional c
   * enable `Uncap Tickrate` in `Extended Video Options` to activate;
   * in practice the game will have issues running faster than ~165 FPS, so use VSync or `Video.FramerateLimit` to cap it.
 * emulate the Transfer Pak functionality the game has on the Nintendo 64 to unlock some cheats automatically.
+* every cheat can be picked in the Cheats menu without earning it first (`Unlock All Cheats` in `Extended Options`, or `Game.UnlockAllCheats` in `pd.ini`). Active cheats still stop missions from counting towards unlocks, as in the original.
 
 **The following platforms are officially supported and tested:**
 * Windows 7+: i686, x86_64

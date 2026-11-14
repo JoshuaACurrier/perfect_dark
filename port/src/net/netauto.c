@@ -13,6 +13,7 @@
 //   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
 //   --net-autokill SECS      (host) every SECS seconds, shoot the chr nearest to one of the players
 //   --net-autoalarm SECS     (host) alarm and a 60 s countdown on at SECS, both off at 2*SECS
+//   --net-cheats MASK        (host) turn on these cheats (bit = CHEAT_* number; 64-bit, e.g. 0x4 invincible)
 //   --net-autopilot [SEED]   drive the local player with scripted input
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
 //   --net-lag MS             delay every outgoing packet by MS milliseconds
@@ -52,6 +53,7 @@ static s32 g_NetAutoAbortSecs = 0;
 static s32 g_NetAutoAborted = 0;
 static s32 g_NetAutoKillSecs = 0;
 static s32 g_NetAutoAlarmSecs = 0;
+static u64 g_NetAutoCheats = 0;
 static const char *g_NetAutoName = NULL;
 
 static s32 g_NetAutoStarted = 0;
@@ -83,6 +85,8 @@ void netAutoInit(void)
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
 	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
+	const char *cheats = sysArgGetString("--net-cheats");
+	g_NetAutoCheats = (cheats && cheats[0]) ? strtoull(cheats, NULL, 0) : 0;
 
 	if (g_NetAutoSims > MAX_BOTS) {
 		g_NetAutoSims = MAX_BOTS;
@@ -151,6 +155,12 @@ static void netAutoStartCoop(void)
 
 static void netAutoStartMatch(void)
 {
+	if (g_NetAutoCheats) {
+		g_CheatsEnabledBank0 = (u32)g_NetAutoCheats;
+		g_CheatsEnabledBank1 = (u32)(g_NetAutoCheats >> 32);
+		sysLogPrintf(LOG_NOTE, "NET: autostart: cheats %08x %08x", g_CheatsEnabledBank0, g_CheatsEnabledBank1);
+	}
+
 	if (g_NetAutoCoopStage > 0) {
 		netAutoStartCoop();
 		return;

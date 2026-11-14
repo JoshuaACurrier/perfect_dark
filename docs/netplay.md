@@ -45,6 +45,12 @@ and every co-op mission and difficulty up to Perfect Agent, can be picked even i
 save hasn't unlocked them. The save itself is not changed. Set `Net.UnlockAll=0` in `pd.ini`
 to turn this off.
 
+### Cheats
+
+The host's cheats (picked in the Cheats menu before hosting) are sent to every player when a
+match or mission starts, so everyone plays with the same cheats. A player's own cheat choices
+don't apply in a network game. As in single player, the "weapons for Jo" cheats only work in Solo.
+
 ### Misc
 
 * Everyone has to have the same ROM. The game only compares the file name, but different regions in one game will definitely break everything.

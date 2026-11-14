@@ -26,6 +26,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-autoabort SECS` | Host: abort the mission after SECS seconds, to test the end screens. |
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
+| `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
 | `--net-autoquit SECS` | Quit SECS seconds after the match starts. |
 | `--net-autopilot [SEED]` | Drive the local player with random but repeatable input. |
 | `--net-dump FILE`, `--net-dump-interval T` | Write every chr's state to FILE every T ticks. |

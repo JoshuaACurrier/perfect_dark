@@ -434,6 +434,10 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 	const u8 mode = (g_Vars.coopplayernum >= 0) ? NETGAMEMODE_COOP : NETGAMEMODE_COMBAT;
 	netbufWriteU8(dst, mode);
 
+	// the host's cheats apply to everyone
+	netbufWriteU32(dst, g_CheatsEnabledBank0);
+	netbufWriteU32(dst, g_CheatsEnabledBank1);
+
 	if (mode == NETGAMEMODE_COOP) {
 		netbufWriteU8(dst, g_MissionConfig.stagenum);
 		netbufWriteU8(dst, g_MissionConfig.stageindex);
@@ -520,6 +524,12 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 	}
 
 	const u8 mode = netbufReadU8(src);
+
+	g_CheatsEnabledBank0 = netbufReadU32(src);
+	g_CheatsEnabledBank1 = netbufReadU32(src);
+	if (g_CheatsEnabledBank0 || g_CheatsEnabledBank1) {
+		sysLogPrintf(LOG_NOTE, "NET: host cheats %08x %08x", g_CheatsEnabledBank0, g_CheatsEnabledBank1);
+	}
 
 	if (mode == NETGAMEMODE_COOP) {
 		g_MissionConfig.iscoop = true;
