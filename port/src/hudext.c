@@ -122,8 +122,11 @@ Gfx *hudextDrawHitmark(Gfx *gdl, s32 x, s32 y)
 	}
 
 	const u32 colour = (pl->hitmarkkill ? 0xff302000 : 0xffffff00) | (alpha & 0xff);
-	const s32 inner = 3;
-	const s32 outer = pl->hitmarkkill ? 8 : 6;
+	// the same reach as the crosshair's own ticks (which run 1..3 x its size from the
+	// centre); a diagonal looks longer than a straight tick, so stop a little short
+	const s32 size = PLAYER_EXTCFG().crosshairsize > 0 ? (s32)PLAYER_EXTCFG().crosshairsize : 1;
+	const s32 inner = size;
+	const s32 outer = size * 2 + (pl->hitmarkkill ? 1 : 0);
 
 	gdl = textSetPrimColour(gdl, colour);
 	gSPSetExtraGeometryModeEXT(gdl++, G_ASPECT_CENTER_EXT);
