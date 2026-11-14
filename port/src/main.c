@@ -22,6 +22,7 @@
 #include "game/cheats.h"
 #include "hudext.h"
 #include "game/propsnd.h"
+#include "lib/snd.h"
 
 u32 g_OsMemSize = 0;
 s32 g_OsMemSizeMb = 16;
@@ -187,6 +188,7 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Game.SkipIntro", &g_SkipIntro, 0, 1);
 	configRegisterInt("Game.DisableMpDeathMusic", &g_MusicDisableMpDeath, 0, 1);
 	configRegisterInt("Audio.RearSoundDampen", &g_SndRearDampen, 0, 100);
+	configRegisterInt("Audio.Headphones3D", &g_SndHrtf, 0, 1);
 	configRegisterInt("Game.GEMuzzleFlashes", &g_BgunGeMuzzleFlashes, 0, 1);
 	configRegisterInt("Game.MaxExplosions", &g_MaxExplosions, 6, 96);
 	configRegisterInt("Game.MpAutoRespawn", &g_MpAutoRespawnSecs, 0, 30);

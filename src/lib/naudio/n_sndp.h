@@ -48,7 +48,8 @@ typedef enum {
 	AL_SNDP_0800_EVT  = 0x0800,
 	AL_SNDP_1000_EVT  = 0x1000,
 	AL_SNDP_FXBUS_EVT = 0x2000,
-	AL_SNDP_4000_EVT  = 0x4000
+	AL_SNDP_4000_EVT  = 0x4000,
+	AL_SNDP_AZIMUTH_EVT = 0x8000 // PC: direction for binaural rendering, see em_az
 } ALSndpMsgType;
 
 typedef struct {

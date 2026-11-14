@@ -80,6 +80,35 @@ const char g_SndGuardString[] = "RUSSES SOUND GUARD STRING";
 const char var70053b3c[] = "Snd: SoundHeaderCacheInit\n";
 
 bool g_SndDisabled = false;
+
+#ifndef PLATFORM_N64
+/**
+ * 3D audio for headphones. When on, propsnd's pans for positional sounds are
+ * 0x80 | direction (0..127 = 0..360 degrees clockwise from straight ahead) instead
+ * of a left/right position, and the mixer renders those voices binaurally.
+ */
+s32 g_SndHrtf = 1;
+s16 g_SndNextAzimuth = -1; // for the state(s) the next func00033820 call creates
+
+/**
+ * If the pan carries a direction, return it and turn the pan into the plain
+ * left/right position for that direction (still used for speech and as the
+ * voice's nominal pan). Otherwise return -1.
+ */
+static s32 sndTakeAzimuth(s32 *pan)
+{
+	s32 az;
+
+	if (!g_SndHrtf || *pan == -1 || (*pan & 0x80) == 0) {
+		return -1;
+	}
+
+	az = *pan & 0x7f;
+	*pan = AL_PAN_CENTER + (s32)(63.0f * sinf(az * (2.0f * M_PI / 128.0f)));
+
+	return az;
+}
+#endif
 u32 var8005dda4 = 0x00000000;
 
 s32 g_SndNosediveVolume = 0;
@@ -2005,6 +2034,9 @@ void sndAdjust(struct sndstate **handle, bool ismp3, s32 vol, s32 pan, s32 sound
 	union soundnumhack sp20;
 	union soundnumhack sp1c;
 	struct audioconfig *config;
+#ifndef PLATFORM_N64
+	s32 azimuth = sndTakeAzimuth(&pan);
+#endif
 
 	if (forcefxmix || fxmixarg != -1) {
 		if (fxmixarg != -1) {
@@ -2014,6 +2046,11 @@ void sndAdjust(struct sndstate **handle, bool ismp3, s32 vol, s32 pan, s32 sound
 		}
 
 #if VERSION >= VERSION_NTSC_1_0
+#ifndef PLATFORM_N64
+		if (g_SndHrtf) {
+			// bit 7 means "has a direction" here, see sndTakeAzimuth
+		} else
+#endif
 		if (pan != -1 && g_SoundMode == SOUNDMODE_SURROUND && (pan & 0x80)) {
 			fxmix += 128;
 		}
@@ -2043,6 +2080,9 @@ void sndAdjust(struct sndstate **handle, bool ismp3, s32 vol, s32 pan, s32 sound
 
 			if (config->pan != -1) {
 				pan = config->pan;
+#ifndef PLATFORM_N64
+				azimuth = -1;
+#endif
 			}
 
 			if (g_Vars.langfilteron && (config->flags & AUDIOCONFIGFLAG_OFFENSIVE)) {
@@ -2069,6 +2109,9 @@ void sndAdjust(struct sndstate **handle, bool ismp3, s32 vol, s32 pan, s32 sound
 
 		if (pan != -1) {
 			audioPostEvent(*handle, AL_SNDP_PAN_EVT, pan & 0x7f);
+#ifndef PLATFORM_N64
+			audioPostEvent(*handle, (s16)AL_SNDP_AZIMUTH_EVT, azimuth);
+#endif
 		}
 
 		if (pitch != -1.0f) {
@@ -2100,6 +2143,11 @@ struct sndstate *snd00010718(struct sndstate **handle, s32 flags, s32 volume, s3
 		}
 
 #if VERSION >= VERSION_NTSC_1_0
+#ifndef PLATFORM_N64
+		if (g_SndHrtf) {
+			// bit 7 means "has a direction" here, see sndTakeAzimuth
+		} else
+#endif
 		if (pan != -1 && g_SoundMode == SOUNDMODE_SURROUND && (pan & 0x80)) {
 			fxmix += 128;
 		}
@@ -2154,6 +2202,10 @@ struct sndstate *sndStart(s32 arg0, s16 sound, struct sndstate **handle, s32 vol
 	u16 volume;
 	f32 pitch;
 
+#ifndef PLATFORM_N64
+	s32 azimuth = sndTakeAzimuth(&panarg);
+#endif
+
 	fxmix = fxmixarg != -1 ? fxmixarg : 0;
 	fxbus = fxbusarg != -1 ? fxbusarg : 1;
 	pan = panarg != -1 ? panarg : AL_PAN_CENTER;
@@ -2184,7 +2236,15 @@ struct sndstate *sndStart(s32 arg0, s16 sound, struct sndstate **handle, s32 vol
 
 #if VERSION >= VERSION_NTSC_1_0
 	if (sp40.id < (u32)g_NumSounds) {
+#ifndef PLATFORM_N64
+		struct sndstate *newstate;
+		g_SndNextAzimuth = azimuth;
+		newstate = func00033820(arg0, sp40.id, volume, pan & 0x7f, pitch, fxmix, IS4MB() ? 0 : fxbus, handle);
+		g_SndNextAzimuth = -1;
+		return newstate;
+#else
 		return func00033820(arg0, sp40.id, volume, pan & 0x7f, pitch, fxmix, IS4MB() ? 0 : fxbus, handle);
+#endif
 	}
 
 	return NULL;
@@ -2209,6 +2269,10 @@ void sndStartMp3(s16 soundnum, s32 volume, s32 pan, s32 responseflags)
 	union soundnumhack sp20;
 
 	sp24.packed = soundnum;
+
+#ifndef PLATFORM_N64
+	sndTakeAzimuth(&pan);
+#endif
 
 	if (!g_SndDisabled) {
 		if (sp24.hasconfig) {

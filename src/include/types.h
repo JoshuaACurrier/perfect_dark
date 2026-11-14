@@ -2031,6 +2031,9 @@ struct sndstate {
 	/*0x46*/ u16 soundnum;
 	/*0x48*/ ALMicroTime unk48;
 #endif
+#ifndef PLATFORM_N64
+	s16 azimuth; // direction for binaural rendering (0..127 = 0..360 degrees clockwise), -1 = none
+#endif
 };
 
 /**

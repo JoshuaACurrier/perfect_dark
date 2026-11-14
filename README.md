@@ -134,7 +134,11 @@ Also in `Options > Extended > Game`, all on by default and not in the original g
 
 In Combat Simulator the death screen says who killed you and counts down to an automatic respawn
 (`Options > Extended > Auto Respawn`, `Game.MpAutoRespawn`, seconds, 0 = off; pressing fire still respawns as soon as the screen fades).
-`Options > Extended > Audio > Sounds Behind You Quieter` (`Audio.RearSoundDampen`, percent, default 30) makes sounds behind you a little quieter,
+**3D Audio (Headphones)** (`Options > Extended > Audio`, `Audio.Headphones3D`, on by default) places every positional sound (gunfire, footsteps, voices
+of guards, doors, ...) all the way around you instead of just left to right. Each ear gets its own copy of the sound, as a head would hear it: later and
+duller in the far ear, and with less treble in both when it comes from behind. It's a model of a head, not a measured one, and it has no cue for above
+and below. It's made for headphones; on speakers turn it off. Music, speech and menu sounds are not affected.
+With it off, `Sounds Behind You Quieter` (`Audio.RearSoundDampen`, percent, default 30) makes sounds behind you a little quieter instead,
 since plain stereo can't tell front from back.
 
 Aim feel (`Options > Extended > Mouse / Controller`): **Aim Sensitivity** scales mouse look while aiming, **Raw Input** (on by default) bypasses Windows pointer speed and acceleration, **Look Curve** sets the controller look response (Original = the game's squared curve, down to Linear), and **Aim Assist** sets how far auto-aim pulls the crosshair (needs the game's Auto-Aim option on).

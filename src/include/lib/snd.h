@@ -43,4 +43,9 @@ void sndPlayUfo(s32 seconds);
 void sndStopUfo(void);
 void sndTickUfo(void);
 
+#ifndef PLATFORM_N64
+extern s32 g_SndHrtf;
+extern s16 g_SndNextAzimuth;
+#endif
+
 #endif

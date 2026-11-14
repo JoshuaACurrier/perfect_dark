@@ -24,3 +24,17 @@ void n_alSynSetPan(N_ALVoice *v, u8 pan)
 		n_alEnvmixerParam(v->pvoice, AL_FILTER_ADD_UPDATE, update);
 	}
 }
+
+#ifndef PLATFORM_N64
+/**
+ * Give the voice a direction for binaural rendering (0..127 = 0..360 degrees
+ * clockwise from straight ahead), or -1 for none. Takes effect right away; the
+ * mixer smooths the change.
+ */
+void n_alSynSetAzimuth(N_ALVoice *v, s16 azimuth)
+{
+	if (v->pvoice) {
+		v->pvoice->em_az = azimuth;
+	}
+}
+#endif

@@ -20,6 +20,10 @@ s32 n_alSynAllocVoice(N_ALVoice *voice, ALVoiceConfig *vc)
 	stolen = _allocatePVoice( &pvoice, vc->priority);
 
 	if (pvoice) {    /* if we were able to allocate a voice */
+#ifndef PLATFORM_N64
+		pvoice->em_az = -1;
+		pvoice->em_azreset = 0;
+#endif
 		if (stolen) {
 			pvoice->offset = 552;
 			pvoice->vvoice->pvoice = 0; /* zero stolen voice */

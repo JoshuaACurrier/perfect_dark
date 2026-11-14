@@ -47,6 +47,8 @@
 #include "lib/main.h"
 #include "system.h"
 
+extern u32 g_MixerSpatialBlocks; // mixer.c
+
 s32 g_NetAutopilot = 0;
 
 static s32 g_NetAutoStartPlayers = 0;
@@ -311,6 +313,7 @@ static void netAutoTickQuit(void)
 			g_NetAutoQuitSecs, netStatBytesSent(), netStatBytesSent() / g_NetAutoQuitSecs,
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
+		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
 		if (g_Vars.mplayerisrunning) {
 			// the scoreboard as this machine sees it, to compare host and clients
 			for (s32 i = 0; i < g_MpNumChrs; ++i) {

@@ -31,6 +31,12 @@ void aSaveBufferImpl(uint16_t source_addr, int16_t *dest_addr, uint16_t nbytes);
 void aInterleaveImpl(void);
 void aMixImpl(uint8_t flags, int16_t gain, uint16_t in_addr, uint16_t out_addr);
 void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t some_vol);
+
+// The next aEnvMixer call renders its voice binaurally from this direction instead of with
+// its left/right volumes. azimuth: 0..127 for 0..360 degrees clockwise from straight ahead,
+// or -1 for plain stereo. reset: the voice has just started (forget the filter history).
+void mixerSetSpatial(int azimuth, int reset);
+extern uint32_t g_MixerSpatialBlocks;
 void aSetVolumeImpl(uint8_t flags, int16_t v, int16_t t, int16_t r);
 void aPoleFilterImpl(uint8_t flags, int16_t gain, uint32_t t, uint32_t addr);
 void aDisableImpl(uint16_t outp, uint32_t b, uint32_t c);

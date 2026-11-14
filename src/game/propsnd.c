@@ -355,7 +355,12 @@ void psTickChannel(s32 channelnum)
 
 #if VERSION >= VERSION_NTSC_1_0
 		if (channel->targetpan != channel->currentpan) {
+#ifndef PLATFORM_N64
+			if ((channel->flags & PSFLAG_FIRSTTICK) || (g_SndHrtf && ((channel->targetpan | channel->currentpan) & 0x80))) {
+				// directions wrap around, so they can't be slid like pans; the mixer smooths them
+#else
 			if (channel->flags & PSFLAG_FIRSTTICK) {
+#endif
 				channel->currentpan = channel->targetpan;
 				newpan = channel->currentpan;
 			} else {
@@ -1197,7 +1202,8 @@ s32 psCalculateVol(struct coord *pos, f32 dist1, f32 dist2, f32 dist3, RoomNum *
 
 	// Stereo can't tell front from back: a sound right behind you pans the same as one
 	// right in front. Make sounds behind a bit quieter so turning towards them helps.
-	if (g_SndRearDampen > 0 && pos != NULL && vol > 0 && LOCALPLAYERCOUNT() == 1) {
+	// (Not with 3D audio on: that has its own, better, cue for sounds behind.)
+	if (g_SndRearDampen > 0 && !g_SndHrtf && pos != NULL && vol > 0 && LOCALPLAYERCOUNT() == 1) {
 		struct player *player = g_Vars.players[0] ? g_Vars.players[0] : g_Vars.currentplayer;
 		if (player) {
 			const f32 dx = pos->x - player->cam_pos.x;
@@ -1238,6 +1244,20 @@ s32 psCalculatePan3(s32 degrees, f32 arg1, struct pschannel *channel)
 	while (degrees < -180) {
 		degrees += 360;
 	}
+
+#ifndef PLATFORM_N64
+	if (g_SndHrtf && LOCALPLAYERCOUNT() == 1) {
+		// 3D audio: pass the direction itself on (see sndTakeAzimuth in snd.c)
+		s32 az = ((degrees < 0 ? degrees + 360 : degrees) * 128 + 180) / 360;
+
+		if (channel != NULL) {
+			channel->degrees = degrees;
+			channel->unk16 = 100.0f * arg1;
+		}
+
+		return 0x80 | (az & 0x7f);
+	}
+#endif
 
 	switch (g_SoundMode) {
 	default:

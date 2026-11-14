@@ -23,6 +23,13 @@ s16 n_eqpower[] = {
 	0x0b11, 0x097d, 0x07e9, 0x0654, 0x04c0, 0x032a, 0x0195, 0x0000,
 };
 
+#ifndef PLATFORM_N64
+// a voice with a direction is placed by the mixer's head model, so its volumes are centred
+#define EM_PAN(e) ((e)->em_az >= 0 ? AL_PAN_CENTER : (e)->em_pan)
+#else
+#define EM_PAN(e) ((e)->em_pan)
+#endif
+
 Acmd *_pullSubFrame(N_PVoice *filter, s16 *inp, s16 *outp, s32 outCount, Acmd *p);
 
 Acmd *n_alEnvmixerPull(N_PVoice *filter, s32 sampleOffset, Acmd *p)
@@ -73,6 +80,9 @@ Acmd *n_alEnvmixerPull(N_PVoice *filter, s32 sampleOffset, Acmd *p)
 				e->em_first  = 1;
 				e->em_delta  = 0;
 				e->em_segEnd = SAMPLE184(param->samples);
+#ifndef PLATFORM_N64
+				e->em_azreset = 1;
+#endif
 
 				tmp = (param->volume + param->volume) / 2;
 
@@ -100,8 +110,8 @@ Acmd *n_alEnvmixerPull(N_PVoice *filter, s32 sampleOffset, Acmd *p)
 					 * Attack time is zero. Simply set the
 					 * volume. We don't want an attack segment.
 					 */
-					e->em_cvolL = (e->em_volume * n_eqpower[e->em_pan]) >> 15;
-					e->em_cvolR = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - e->em_pan - 1]) >> 15;
+					e->em_cvolL = (e->em_volume * n_eqpower[EM_PAN(e)]) >> 15;
+					e->em_cvolR = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - EM_PAN(e) - 1]) >> 15;
 				}
 
 				e->rs_ratio = param->pitch;
@@ -122,8 +132,8 @@ Acmd *n_alEnvmixerPull(N_PVoice *filter, s32 sampleOffset, Acmd *p)
 				 * We should have reached our target, calculate
 				 * target in case e->em_segEnd was 0
 				 */
-				e->em_ltgt = (e->em_volume * n_eqpower[e->em_pan]) >> 15;
-				e->em_rtgt = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - e->em_pan - 1]) >> 15;
+				e->em_ltgt = (e->em_volume * n_eqpower[EM_PAN(e)]) >> 15;
+				e->em_rtgt = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - EM_PAN(e) - 1]) >> 15;
 				e->em_delta = e->em_segEnd;   /* To prevent overflow */
 				e->em_cvolL = e->em_ltgt;
 				e->em_cvolR = e->em_rtgt;
@@ -345,16 +355,24 @@ Acmd *_pullSubFrame(N_PVoice *filter, s16 *inp, s16 *outp, s32 outCount, Acmd *p
 		/*
 		 * Calculate derived parameters
 		 */
-		e->em_ltgt = (e->em_volume * n_eqpower[e->em_pan]) >> 15;
+		e->em_ltgt = (e->em_volume * n_eqpower[EM_PAN(e)]) >> 15;
 		e->em_lratm = _getRate(e->em_cvolL, e->em_ltgt, e->em_segEnd, &(e->em_lratl));
-		e->em_rtgt = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - e->em_pan - 1]) >> 15;
+		e->em_rtgt = (e->em_volume * n_eqpower[N_EQPOWER_LENGTH - EM_PAN(e) - 1]) >> 15;
 		e->em_rratm = _getRate(e->em_cvolR, e->em_rtgt, e->em_segEnd, &(e->em_rratl));
 
 		n_aSetVolume(ptr++, A_LEFT  | A_VOL, e->em_cvolL, e->em_dryamt, e->em_wetamt);
 		n_aSetVolume(ptr++, A_RIGHT | A_VOL, e->em_rtgt, e->em_rratm,  e->em_rratl);
 		n_aSetVolume(ptr++, A_RATE, e->em_ltgt, e->em_lratm, e->em_lratl);
+#ifndef PLATFORM_N64
+		mixerSetSpatial(e->em_az, e->em_azreset);
+		e->em_azreset = 0;
+#endif
 		n_aEnvMixer (ptr++, A_INIT, e->em_cvolR, osVirtualToPhysical(e->em_state));
 	} else {
+#ifndef PLATFORM_N64
+		mixerSetSpatial(e->em_az, e->em_azreset);
+		e->em_azreset = 0;
+#endif
 		n_aEnvMixer(ptr++, A_CONTINUE, 0, osVirtualToPhysical(e->em_state));
 	}
 

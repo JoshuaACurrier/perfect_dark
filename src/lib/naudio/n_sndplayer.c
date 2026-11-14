@@ -3,6 +3,9 @@
 #include <libaudio.h>
 #include "n_sndp.h"
 #include "lib/snd.h"
+#ifndef PLATFORM_N64
+void n_alSynSetAzimuth(N_ALVoice *v, s16 azimuth);
+#endif
 #include "lib/lib_317f0.h"
 #include "bss.h"
 #include "data.h"
@@ -247,6 +250,9 @@ void _n_handleEvent(N_ALSndpEvent *event)
 			fxmix = MIN(127, MAX(0, fxmix));
 			fxmix |= state->fxmix & 0x80;
 
+#ifndef PLATFORM_N64
+			n_alSynSetAzimuth(&state->voice, state->azimuth);
+#endif
 			n_alSynStartVoiceParams(&state->voice, sound->wavetable, state->pitch * state->basepitch, vol, pan, fxmix, 0, 0, 0, delta);
 			state->state = AL_PLAYING;
 			var8005f130++;
@@ -344,6 +350,15 @@ void _n_handleEvent(N_ALSndpEvent *event)
 				n_alSynSetPan(&state->voice, pan);
 			}
 			break;
+#ifndef PLATFORM_N64
+		case AL_SNDP_AZIMUTH_EVT:
+			state->azimuth = (s16)event->common.unk08;
+
+			if (state->state == AL_PLAYING) {
+				n_alSynSetAzimuth(&state->voice, state->azimuth);
+			}
+			break;
+#endif
 		case AL_SNDP_PITCH_EVT:
 			state->pitch = event->pitch.pitch;
 
@@ -612,6 +627,9 @@ struct sndstate *func00033390(s32 arg0, ALSound *sound)
 		state->fxmix = 0;
 		state->pan = AL_PAN_CENTER;
 		state->vol = 0x7fff;
+#ifndef PLATFORM_N64
+		state->azimuth = -1;
+#endif
 
 		if (g_SndpAddRefCallback != NULL) {
 			g_SndpAddRefCallback(state->sound);
@@ -723,6 +741,9 @@ struct sndstate *func00033820(s32 arg0, s16 soundnum, u16 vol, ALPan pan, f32 pi
 				}
 
 				state->pan = abspan;
+#ifndef PLATFORM_N64
+				state->azimuth = g_SndNextAzimuth;
+#endif
 				state->vol = (u32)(vol * state->vol) >> 15;
 				state->pitch *= pitch;
 				state->fxmix = fxmix;

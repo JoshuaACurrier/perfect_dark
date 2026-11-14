@@ -9,6 +9,7 @@
 #   -C "ARGS"   extra args for the clients only
 #   -k          keep the instances running (don't kill them)
 #   -d SECS     start the last client SECS seconds late (to test joining mid-match)
+#   -s          leave sound on (the default is --no-sound)
 #
 # env:
 #   PD_EXE      path to pd.x86_64.exe (default: build/pd.x86_64.exe)
@@ -31,8 +32,9 @@ HOSTARGS=""
 CLIENTARGS=""
 KEEP=0
 LATE=0
+NOSOUND="--no-sound"
 
-while getopts "c:t:H:C:kd:" opt; do
+while getopts "c:t:H:C:kd:s" opt; do
 	case "$opt" in
 		c) NCLIENTS="$OPTARG" ;;
 		t) TIME="$OPTARG" ;;
@@ -40,6 +42,7 @@ while getopts "c:t:H:C:kd:" opt; do
 		C) CLIENTARGS="$OPTARG" ;;
 		k) KEEP=1 ;;
 		d) LATE="$OPTARG" ;;
+		s) NOSOUND="" ;;
 		*) exit 1 ;;
 	esac
 done
@@ -62,7 +65,7 @@ launch() {
 	mkdir -p "$PD_OUT/$name"
 	rm -f "$PD_OUT/$name/pd.log"
 	"$PD_EXE" --basedir "$DATA_W" --savedir "$OUT_W/$name" --logfile "$OUT_W/$name/pd.log" \
-		--no-sound "$@" > "$PD_OUT/$name/stdout.txt" 2>&1 &
+		$NOSOUND "$@" > "$PD_OUT/$name/stdout.txt" 2>&1 &
 	PIDS+=($!)
 	echo "started $name (pid $!): $*"
 }

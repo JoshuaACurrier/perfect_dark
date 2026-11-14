@@ -15,6 +15,7 @@
 #include "net/net.h"
 #include "hudext.h"
 #include "game/propsnd.h"
+#include "lib/snd.h"
 #include "lib/joy.h"
 #include "video.h"
 #include "input.h"
@@ -1446,7 +1447,28 @@ static MenuItemHandlerResult menuhandlerRearDampen(s32 operation, struct menuite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerHrtf(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_SndHrtf;
+	case MENUOP_SET:
+		g_SndHrtf = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedAudioMenuItems[] = {
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"3D Audio (Headphones)",
+		0,
+		menuhandlerHrtf,
+	},
 	{
 		MENUITEMTYPE_CHECKBOX,
 		0,

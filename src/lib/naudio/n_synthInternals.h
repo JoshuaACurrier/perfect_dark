@@ -78,6 +78,10 @@ typedef struct N_PVoice_s {
 	/** ALEnvMixer *********************************/
 	ENVMIX_STATE	*em_state;
 	s16		        em_pan;
+#ifndef PLATFORM_N64
+	s16		        em_az;      // direction for binaural rendering (0..127 = 0..360 degrees), -1 = none
+	s16		        em_azreset; // the voice just started
+#endif
 	s16		        em_volume;
 	s16		        em_cvolL;
 	s16		        em_cvolR;

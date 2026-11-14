@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 #include <ultra64.h>
 
 #include "mixer.h"
@@ -504,6 +505,207 @@ void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state, uint16_t
     memcpy(state + 8, in, 8 * sizeof(int16_t));
 }
 
+
+/*
+ * Binaural ("3D headphone") rendering for positional voices.
+ *
+ * The synth normally places a voice with a left/right volume pair. For voices that carry
+ * a direction (mixerSetSpatial), the mono signal is instead run through a model of the
+ * listener's head for each ear (after Brown & Duda, "A Structural Model for Binaural Sound
+ * Synthesis", 1998):
+ *   - the sound reaches the far ear later (interaural time difference, up to ~0.65 ms);
+ *   - the head shadows high frequencies at the far ear and boosts them at the near ear
+ *     (a one-pole/one-zero filter whose high frequency gain depends on the angle);
+ *   - a small overall level difference between the ears;
+ *   - sounds from behind lose high frequencies in both ears (the outer ear shadows them),
+ *     which is what tells front from back.
+ * Parameters glide over each block so a moving source doesn't click.
+ */
+
+#define BIN_MAX_VOICES 64
+#define BIN_RING 64 // samples of history, a power of two; the longest delay is ~15 samples
+#define BIN_SAMPLE_RATE 22020.f
+#define BIN_HEAD_RADIUS 0.0875f // metres
+#define BIN_SOUND_SPEED 343.f   // metres per second
+#define BIN_PI 3.14159265358979f
+
+struct binear {
+    float delay;   // samples
+    float b0, b1;  // head shadow filter numerator
+    float gain;    // broadband level
+    float x1, y1;  // head shadow filter state
+    float lp;      // rear filter state
+};
+
+struct binvoice {
+    void *key;      // the voice's envmixer state, which identifies it
+    uint32_t used;  // frame counter of the last use, to recycle slots
+    int primed;     // parameters have been set at least once
+    float rear;     // how much of the rear filter is mixed in
+    struct binear ear[2];
+    float ring[BIN_RING];
+    uint32_t pos;
+};
+
+static struct binvoice binvoices[BIN_MAX_VOICES];
+static uint32_t bin_frame = 0;
+static int bin_az = -1;    // direction for the next aEnvMixer call, -1 = plain stereo
+static int bin_reset = 0;
+uint32_t g_MixerSpatialBlocks = 0; // voice blocks rendered binaurally, for the test tools
+
+void mixerSetSpatial(int azimuth, int reset) {
+    bin_az = azimuth;
+    bin_reset = reset;
+}
+
+static struct binvoice *binFindVoice(void *key) {
+    struct binvoice *oldest = &binvoices[0];
+    for (int i = 0; i < BIN_MAX_VOICES; ++i) {
+        if (binvoices[i].key == key) {
+            return &binvoices[i];
+        }
+        if (binvoices[i].used < oldest->used) {
+            oldest = &binvoices[i];
+        }
+    }
+    memset(oldest, 0, sizeof(*oldest));
+    oldest->key = key;
+    return oldest;
+}
+
+// theta: angle between the source and the ear's axis, 0 (facing the ear) .. pi (opposite side)
+static void binEarTarget(float theta, float *delay, float *b0, float *b1, float *gain) {
+    const float fs2 = 2.f * BIN_SAMPLE_RATE;
+    const float beta = 2.f * BIN_SOUND_SPEED / BIN_HEAD_RADIUS;
+    const float aoverc = BIN_HEAD_RADIUS / BIN_SOUND_SPEED * BIN_SAMPLE_RATE; // in samples
+
+    // head shadow: high frequency gain from 2 (towards the ear) down to ~0.1 (150 degrees away)
+    const float alphamin = 0.1f;
+    const float thetamin = 150.f * BIN_PI / 180.f;
+    const float alpha = (1.f + alphamin * 0.5f) + (1.f - alphamin * 0.5f) * cosf(theta / thetamin * BIN_PI);
+    *b0 = (fs2 * alpha + beta) / (fs2 + beta);
+    *b1 = (beta - fs2 * alpha) / (fs2 + beta);
+
+    // time of arrival, offset so it's never negative
+    if (theta < BIN_PI * 0.5f) {
+        *delay = aoverc * (1.f - cosf(theta));
+    } else {
+        *delay = aoverc * (1.f + theta - BIN_PI * 0.5f);
+    }
+
+    // a little overall level difference, 1 for a source straight ahead
+    *gain = 1.f + 0.15f * cosf(theta);
+}
+
+static inline float binAngleDist(float a, float b) {
+    float d = fabsf(a - b);
+    if (d > BIN_PI) {
+        d = 2.f * BIN_PI - d;
+    }
+    return d;
+}
+
+// in: mono samples; vol: per-sample mono gain (Q15) already worked out by the caller
+static void binauralMix(void *key, int az, int reset, const int16_t *in, const int16_t *monogain,
+        int16_t *dryl, int16_t *dryr, int16_t *wetl, int16_t *wetr, int16_t voldry, int16_t volwet, int nsamples, int xor) {
+    struct binvoice *v = binFindVoice(key);
+    v->used = ++bin_frame;
+    ++g_MixerSpatialBlocks;
+
+    if (reset) {
+        void *k = v->key;
+        memset(v, 0, sizeof(*v));
+        v->key = k;
+        v->used = bin_frame;
+    }
+
+    // azimuth: 0 = ahead, clockwise, 128 steps a turn. Ears at +-90 degrees.
+    const float angle = (float)(az & 0x7f) * (2.f * BIN_PI / 128.f);
+    const float earaxis[2] = { 1.5f * BIN_PI, 0.5f * BIN_PI }; // left, right
+    const float rearness = -cosf(angle) > 0.f ? -cosf(angle) : 0.f;
+    const float reartgt = 0.65f * rearness;
+    const float lpcoef = 0.435f; // one-pole low pass around 2 kHz
+
+    float tdelay[2], tb0[2], tb1[2], tgain[2];
+    for (int e = 0; e < 2; ++e) {
+        binEarTarget(binAngleDist(angle, earaxis[e]), &tdelay[e], &tb0[e], &tb1[e], &tgain[e]);
+    }
+
+    if (!v->primed) {
+        v->primed = 1;
+        v->rear = reartgt;
+        for (int e = 0; e < 2; ++e) {
+            v->ear[e].delay = tdelay[e];
+            v->ear[e].b0 = tb0[e];
+            v->ear[e].b1 = tb1[e];
+            v->ear[e].gain = tgain[e];
+        }
+    }
+
+    const float fs2 = 2.f * BIN_SAMPLE_RATE;
+    const float beta = 2.f * BIN_SOUND_SPEED / BIN_HEAD_RADIUS;
+    const float a1 = (beta - fs2) / (fs2 + beta);
+    const float inv = 1.f / (float)nsamples;
+
+    float ddelay[2], db0[2], db1[2], dgain[2];
+    for (int e = 0; e < 2; ++e) {
+        ddelay[e] = (tdelay[e] - v->ear[e].delay) * inv;
+        db0[e] = (tb0[e] - v->ear[e].b0) * inv;
+        db1[e] = (tb1[e] - v->ear[e].b1) * inv;
+        dgain[e] = (tgain[e] - v->ear[e].gain) * inv;
+    }
+    const float drear = (reartgt - v->rear) * inv;
+
+    int16_t *dry[2] = { dryl, dryr };
+    int16_t *wet[2] = { wetl, wetr };
+    const float fdry = (float)voldry * (1.f / 32768.f);
+    const float fwet = (float)volwet * (1.f / 32768.f);
+
+    for (int i = 0; i < nsamples; ++i) {
+        const int idx = i ^ xor;
+        const float x = (float)in[idx] * (float)monogain[i] * (1.f / 32768.f);
+
+        v->ring[v->pos & (BIN_RING - 1)] = x;
+        v->rear += drear;
+
+        for (int e = 0; e < 2; ++e) {
+            struct binear *ear = &v->ear[e];
+            ear->delay += ddelay[e];
+            ear->b0 += db0[e];
+            ear->b1 += db1[e];
+            ear->gain += dgain[e];
+
+            // fractional delay
+            const int whole = (int)ear->delay;
+            const float frac = ear->delay - (float)whole;
+            const float s0 = v->ring[(v->pos - whole) & (BIN_RING - 1)];
+            const float s1 = v->ring[(v->pos - whole - 1) & (BIN_RING - 1)];
+            const float d = s0 + (s1 - s0) * frac;
+
+            // head shadow
+            float y = ear->b0 * d + ear->b1 * ear->x1 - a1 * ear->y1;
+            ear->x1 = d;
+            ear->y1 = y;
+
+            // rear: blend towards a low passed copy
+            ear->lp += lpcoef * (y - ear->lp);
+            y += v->rear * (ear->lp - y);
+            y *= ear->gain;
+
+            dry[e][idx] = clamp16((int32_t)dry[e][idx] + (int32_t)(y * fdry));
+            wet[e][idx] = clamp16((int32_t)wet[e][idx] + (int32_t)(y * fwet));
+        }
+
+        ++v->pos;
+    }
+
+    // flush denormals
+    for (int e = 0; e < 2; ++e) {
+        if (fabsf(v->ear[e].y1) < 1e-20f) v->ear[e].y1 = 0.f;
+        if (fabsf(v->ear[e].lp) < 1e-20f) v->ear[e].lp = 0.f;
+    }
+}
+
 void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
     int16_t *in = BUF_S16(OFS_BASE);
     int16_t *dry[2] = {BUF_S16(OFS_MAIN_L), BUF_S16(OFS_MAIN_R)};
@@ -519,6 +721,13 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
     } *savedstate = (void *)state;
 
     rspa.vol[1] = rvol; // why the fuck is this here?
+
+    // direction for this voice, if it has one (see mixerSetSpatial)
+    const int spatial_az = bin_az;
+    const int spatial_reset = bin_reset;
+    int16_t monogain[NUM_SAMPLES];
+    bin_az = -1;
+    bin_reset = 0;
 
     // naudio uses a linear envelope
     // TODO: sse/neon
@@ -564,6 +773,12 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
             vol[j] = t[j] >> 16;
         }
 
+        if (spatial_az >= 0) {
+            // placed by the head model after the loop; here just the envelope
+            monogain[i] = (int16_t)(((int32_t)vol[0] + (int32_t)vol[1]) >> 1);
+            continue;
+        }
+
         outptr[0] = dry[0] + (i^XOR);
         outptr[1] = dry[1] + (i^XOR);
         outptr[2] = wet[0] + (i^XOR);
@@ -578,6 +793,11 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
         for (int j = 0; j < 4; ++j) {
             *outptr[j] = clamp16(*outptr[j] + ((insamp * gain[j]) >> 15));
         }
+    }
+
+    if (spatial_az >= 0) {
+        binauralMix((void *)state, spatial_az, spatial_reset, in, monogain,
+            dry[0], dry[1], wet[0], wet[1], voldry, volwet, nsamples, XOR);
     }
 
     #undef XOR
