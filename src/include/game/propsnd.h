@@ -35,4 +35,9 @@ void psApplyVolPan(struct sndstate *handle, struct coord *pos, f32 dist1, f32 di
 s32 psGetRandomSparkSound(void);
 s32 psGetDuration60(s32 channelnum);
 
+#ifndef PLATFORM_N64
+// how much quieter (percent) a sound right behind the listener is than one in front
+extern s32 g_SndRearDampen;
+#endif
+
 #endif

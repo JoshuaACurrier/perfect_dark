@@ -6,6 +6,7 @@ script their input, and compare what each copy thinks the world looks like.
 | File | What it does |
 |---|---|
 | `nettest.sh` | Starts a host and N clients with separate save dirs and logs, waits, kills them, prints the `NET:` log lines. `-d SECS` starts the last client late, to test joining mid-match. |
+| `smooth.py` | How smoothly chrs move in a `--net-dump` file (dump with `--net-dump-interval 1`): speed spikes, back-and-forth jitter and distance travelled. Run it on the host's dump and a client's; the client's should look like the host's. |
 | `desync.py` | Compares two `--net-dump` files (host vs client): how far apart every chr and loose gun is, plus props that only the client has or that vanished on one side. |
 | `winshot.ps1` | Screenshots each game window (not the desktop); skips hung windows. |
 | `sendkey.ps1` | Sends a key press to the game windows without focusing them. |
@@ -28,7 +29,9 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
-| `--net-autoquit SECS` | Quit SECS seconds after the match starts. |
+| `--net-teams` | Host: turn teams on for the auto-started match: the players and every other simulant against the rest. |
+| `--net-hudtest` | Keep the hit marker on screen (alternating hit / kill) and log where teammates' names are drawn, for screenshots. |
+| `--net-autoquit SECS` | Quit SECS seconds after the match starts. Logs the scoreboard as this machine sees it and how many footsteps played. |
 | `--net-autopilot [SEED]` | Drive the local player with random but repeatable input. |
 | `--net-dump FILE`, `--net-dump-interval T` | Write every chr's state to FILE every T ticks. |
 | `--net-lag MS`, `--net-jitter MS`, `--net-loss PCT` | Simulate a bad connection on outgoing packets. |

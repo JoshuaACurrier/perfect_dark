@@ -8,6 +8,7 @@
 #include "game/cheats.h"
 #include "game/chraction.h"
 #include "game/footstep.h"
+#include "game/propsnd.h"
 #include "game/game_006900.h"
 #include "game/chr.h"
 #include "game/prop.h"
@@ -155,8 +156,9 @@ static inline void bmoveProcessRemoteInput(const bool allowc1buttons)
 	}
 
 	// the client fell into a pit or onto a death floor on its own screen (UCMD_ENVDEATH);
-	// the host doesn't run those deaths for remote players, see bwalkEnvDeath
-	if ((inmove->ucmd & UCMD_ENVDEATH) && !pl->isdead && pl->prop && pl->prop->chr) {
+	// the host doesn't run those deaths for remote players, see bwalkEnvDeath; while a respawn
+	// teleport is unconfirmed (forcetick) the report can only be left over from the last life
+	if ((inmove->ucmd & UCMD_ENVDEATH) && !pl->isdead && !pl->client->forcetick && pl->prop && pl->prop->chr) {
 		playerDie(true);
 	}
 
@@ -2661,9 +2663,18 @@ void bmoveTick(bool allowc1x, bool allowc1y, bool allowc1buttons, bool ignorec2)
 	}
 
 	// Update footstep sounds
+#ifndef PLATFORM_N64
+	// in net games everyone has their own speakers, so everyone hears footsteps; other
+	// players' steps come from where they are (their speed isn't known here, so go by distance)
+	const bool netsteps = g_NetMode && LOCALPLAYERCOUNT() == 1;
+	if ((g_Vars.currentplayer->bondmovemode == MOVEMODE_WALK || g_Vars.currentplayer->bondmovemode == MOVEMODE_GRAB)
+			&& (g_Vars.currentplayer->speedforwards || g_Vars.currentplayer->speedsideways || (netsteps && g_Vars.currentplayer->isremote))
+			&& (!g_Vars.normmplayerisrunning || PLAYERCOUNT() == 1 || netsteps)) {
+#else
 	if ((g_Vars.currentplayer->bondmovemode == MOVEMODE_WALK || g_Vars.currentplayer->bondmovemode == MOVEMODE_GRAB)
 			&& (g_Vars.currentplayer->speedforwards || g_Vars.currentplayer->speedsideways)
 			&& (!g_Vars.normmplayerisrunning || PLAYERCOUNT() == 1)) {
+#endif
 		chr = g_Vars.currentplayer->prop->chr;
 
 		if (g_Vars.currentplayer->cameramode == CAMERAMODE_DEFAULT
@@ -2695,6 +2706,12 @@ void bmoveTick(bool allowc1x, bool allowc1y, bool allowc1buttons, bool ignorec2)
 
 				sound = footstepChooseSound(chr, distance > 10);
 
+#ifndef PLATFORM_N64
+				if (sound != -1 && g_Vars.currentplayer->isremote) {
+					psCreate(NULL, g_Vars.currentplayer->prop, sound, -1, -1, PSFLAG_0400, 0, PSTYPE_FOOTSTEP, NULL, -1, NULL, -1, -1, -1, -1);
+					++g_FootstepsPlayed;
+				} else
+#endif
 				if (sound != -1) {
 					snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, sound, 1, 1, -1, true);
 				}

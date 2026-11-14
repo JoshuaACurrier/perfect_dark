@@ -35,6 +35,8 @@
 #include "net/net.h"
 #include "net/netbuf.h"
 #include "net/netmsg.h"
+#include "game/mpstats.h"
+#include "hudext.h"
 
 /* utils */
 
@@ -456,6 +458,9 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 	netbufWriteU32(dst, g_CheatsEnabledBank0);
 	netbufWriteU32(dst, g_CheatsEnabledBank1);
 
+	// and so does its auto respawn delay
+	netbufWriteU8(dst, (u8)g_MpAutoRespawnSecs);
+
 	if (mode == NETGAMEMODE_COOP) {
 		netbufWriteU8(dst, g_MissionConfig.stagenum);
 		netbufWriteU8(dst, g_MissionConfig.stageindex);
@@ -553,6 +558,7 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 
 	g_CheatsEnabledBank0 = netbufReadU32(src);
 	g_CheatsEnabledBank1 = netbufReadU32(src);
+	g_NetHostRespawnSecs = netbufReadU8(src);
 	if (g_CheatsEnabledBank0 || g_CheatsEnabledBank1) {
 		sysLogPrintf(LOG_NOTE, "NET: host cheats %08x %08x", g_CheatsEnabledBank0, g_CheatsEnabledBank1);
 	}
@@ -1996,5 +2002,245 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 		}
 	}
 
+	return src->error;
+}
+
+/* kills and the scoreboard: SVC_MP_KILL, SVC_MP_SCORES */
+
+// Player numbers differ between machines (each puts its own player first), so chrs are
+// named by a key: a player by its client id, a simulant by its bot slot (0x80 | slot).
+
+s32 g_NetApplyingKill = false;
+s32 g_NetHostRespawnSecs = 0;
+
+static u32 g_NetScoresHash = 0;
+static u32 g_NetScoresNextTick = 0;
+
+static u8 netmsgMpChrKey(s32 chrindex)
+{
+	if (chrindex < 0 || chrindex >= g_MpNumChrs) {
+		return 0xff;
+	}
+	const s32 mpindex = func0f18d074(chrindex);
+	if (mpindex < 0) {
+		return 0xff;
+	}
+	if (mpindex >= MAX_PLAYERS) {
+		return 0x80 | (mpindex - MAX_PLAYERS);
+	}
+	struct netclient *cl = g_PlayerConfigsArray[mpindex].client;
+	return cl ? cl->id : 0xff;
+}
+
+static s32 netmsgMpChrFromKey(u8 key)
+{
+	struct mpchrconfig *cfg = NULL;
+
+	if (key == 0xff) {
+		return -1;
+	}
+
+	if (key & 0x80) {
+		if ((key & 0x7f) >= MAX_BOTS) {
+			return -1;
+		}
+		cfg = &g_BotConfigsArray[key & 0x7f].base;
+	} else {
+		if (key >= NET_MAX_CLIENTS || !g_NetClients[key].config) {
+			return -1;
+		}
+		cfg = &g_NetClients[key].config->base;
+	}
+
+	for (s32 i = 0; i < g_MpNumChrs; ++i) {
+		if (g_MpAllChrConfigPtrs[i] == cfg) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+u32 netmsgSvcMpKillWrite(struct netbuf *dst, s32 aplayernum, s32 vplayernum)
+{
+	if (!g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return dst->error;
+	}
+	sysLogPrintf(LOG_NOTE, "NET: kill: %d killed %d", aplayernum, vplayernum);
+	netbufWriteU8(dst, SVC_MP_KILL);
+	netbufWriteU8(dst, netmsgMpChrKey(aplayernum));
+	netbufWriteU8(dst, netmsgMpChrKey(vplayernum));
+	return dst->error;
+}
+
+u32 netmsgSvcMpKillRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 akey = netbufReadU8(src);
+	const u8 vkey = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME || !g_Vars.mplayerisrunning) {
+		return src->error;
+	}
+
+	const s32 a = netmsgMpChrFromKey(akey);
+	const s32 v = netmsgMpChrFromKey(vkey);
+
+	if (a < 0 && v < 0) {
+		return src->error;
+	}
+
+	// a player who was killed dies here and now, before the SVC_PLAYER_STATS that says so,
+	// or the death would clear the "killed by" message we're about to show
+	if (v >= 0 && v < PLAYERCOUNT() && g_Vars.players[v] && g_Vars.players[v]->prop && !g_Vars.players[v]->isdead) {
+		const s32 prevplayernum = g_Vars.currentplayernum;
+		setCurrentPlayerNum(v);
+		playerDieByShooter(a >= 0 ? a : v, true);
+		setCurrentPlayerNum(prevplayernum);
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: kill: %d killed %d", a, v);
+
+	g_NetApplyingKill = true;
+	mpstatsRecordDeath(a, v);
+	g_NetApplyingKill = false;
+
+	return src->error;
+}
+
+static u32 netmsgMpScoresHash(void)
+{
+	u32 h = 2166136261u;
+	for (s32 i = 0; i < g_MpNumChrs; ++i) {
+		const struct mpchrconfig *cfg = g_MpAllChrConfigPtrs[i];
+		if (!cfg) {
+			continue;
+		}
+		h = (h ^ (u16)cfg->numdeaths) * 16777619u;
+		h = (h ^ (u16)cfg->numpoints) * 16777619u;
+		for (s32 j = 0; j < MAX_MPCHRS; ++j) {
+			h = (h ^ (u16)cfg->killcounts[j]) * 16777619u;
+		}
+	}
+	return h;
+}
+
+u32 netmsgSvcMpScoresWrite(struct netbuf *dst)
+{
+	const s32 n = g_MpNumChrs;
+	netbufWriteU8(dst, SVC_MP_SCORES);
+	netbufWriteU8(dst, n);
+	for (s32 i = 0; i < n; ++i) {
+		const struct mpchrconfig *cfg = g_MpAllChrConfigPtrs[i];
+		netbufWriteU8(dst, cfg ? netmsgMpChrKey(i) : 0xff);
+		netbufWriteS16(dst, cfg ? cfg->numdeaths : 0);
+		netbufWriteS16(dst, cfg ? cfg->numpoints : 0);
+	}
+	for (s32 i = 0; i < n; ++i) {
+		const struct mpchrconfig *cfg = g_MpAllChrConfigPtrs[i];
+		for (s32 j = 0; j < n; ++j) {
+			const s32 mpindex = func0f18d074(j);
+			netbufWriteS16(dst, (cfg && mpindex >= 0) ? cfg->killcounts[mpindex] : 0);
+		}
+	}
+	return dst->error;
+}
+
+u32 netmsgSvcMpScoresRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 n = netbufReadU8(src);
+	if (src->error || n > MAX_MPCHRS) {
+		return 1;
+	}
+
+	u8 keys[MAX_MPCHRS];
+	s16 deaths[MAX_MPCHRS];
+	s16 points[MAX_MPCHRS];
+	s16 kills[MAX_MPCHRS][MAX_MPCHRS];
+
+	for (s32 i = 0; i < n; ++i) {
+		keys[i] = netbufReadU8(src);
+		deaths[i] = netbufReadS16(src);
+		points[i] = netbufReadS16(src);
+	}
+	for (s32 i = 0; i < n; ++i) {
+		for (s32 j = 0; j < n; ++j) {
+			kills[i][j] = netbufReadS16(src);
+		}
+	}
+
+	if (src->error || srccl->state < CLSTATE_GAME || !g_Vars.mplayerisrunning) {
+		return src->error;
+	}
+
+	s32 local[MAX_MPCHRS];
+	s32 localmp[MAX_MPCHRS];
+	for (s32 i = 0; i < n; ++i) {
+		local[i] = netmsgMpChrFromKey(keys[i]);
+		localmp[i] = (local[i] >= 0) ? func0f18d074(local[i]) : -1;
+	}
+
+	for (s32 i = 0; i < n; ++i) {
+		if (local[i] < 0 || !g_MpAllChrConfigPtrs[local[i]]) {
+			continue;
+		}
+		struct mpchrconfig *cfg = g_MpAllChrConfigPtrs[local[i]];
+		cfg->numdeaths = deaths[i];
+		cfg->numpoints = points[i];
+		for (s32 j = 0; j < n; ++j) {
+			if (localmp[j] >= 0) {
+				cfg->killcounts[localmp[j]] = kills[i][j];
+			}
+		}
+	}
+
+	return src->error;
+}
+
+void netmsgMpScoresTick(void)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_Vars.mplayerisrunning || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		g_NetScoresHash = 0;
+		g_NetScoresNextTick = 0;
+		return;
+	}
+
+	const u32 h = netmsgMpScoresHash();
+	if (h == g_NetScoresHash && g_NetTick < g_NetScoresNextTick) {
+		return;
+	}
+
+	g_NetScoresHash = h;
+	g_NetScoresNextTick = g_NetTick + 300;
+	netmsgSvcMpScoresWrite(&g_NetMsgRel);
+}
+
+/* hit markers: SVC_HITMARK */
+
+u32 netmsgSvcHitmarkWrite(struct netclient *dstcl, bool kill)
+{
+	if (!dstcl || dstcl->state < CLSTATE_GAME || !dstcl->peer) {
+		return 0;
+	}
+	u8 data[8];
+	struct netbuf buf = { .data = data, .size = sizeof(data) };
+	netbufStartWrite(&buf);
+	netbufWriteU8(&buf, SVC_HITMARK);
+	netbufWriteU8(&buf, kill ? 1 : 0);
+	if (!buf.error) {
+		netSend(dstcl, &buf, false, NETCHAN_DEFAULT);
+	}
+	return buf.error;
+}
+
+u32 netmsgSvcHitmarkRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 flags = netbufReadU8(src);
+	if (src->error || srccl->state < CLSTATE_GAME || !g_NetLocalClient->player) {
+		return src->error;
+	}
+	if (flags & 1) {
+		sysLogPrintf(LOG_NOTE, "NET: hit marker: kill");
+	}
+	hudextHitmark(g_NetLocalClient->player, (flags & 1) != 0);
 	return src->error;
 }

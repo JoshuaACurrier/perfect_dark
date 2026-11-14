@@ -668,6 +668,11 @@ void playermgrAllocatePlayer(s32 index)
 	g_Vars.players[index]->client = NULL;
 	g_Vars.players[index]->ucmd = (g_NetMode == NETMODE_SERVER) ? UCMD_FL_FORCEMASK : 0;
 	g_Vars.players[index]->isremote = false;
+	g_Vars.players[index]->netenvdeath = false;
+	g_Vars.players[index]->killedby = -1;
+	g_Vars.players[index]->deadtime60 = 0;
+	g_Vars.players[index]->hitmarktime60 = 0;
+	g_Vars.players[index]->hitmarkkill = false;
 #endif
 
 	g_Vars.bondvisible = true;

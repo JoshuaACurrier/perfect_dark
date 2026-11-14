@@ -17,6 +17,10 @@
 #include "data.h"
 #include "types.h"
 
+#ifndef PLATFORM_N64
+s32 g_SndRearDampen = 30;
+#endif
+
 struct pschannel *g_PsChannels = NULL;
 
 #if VERSION >= VERSION_NTSC_1_0
@@ -1188,7 +1192,39 @@ s32 psCalculateVol(struct coord *pos, f32 dist1, f32 dist2, f32 dist3, RoomNum *
 		*playerdistptr = playerdist;
 	}
 
+#ifndef PLATFORM_N64
+	s32 vol = psCalculateVolumeFromDistance(playerdist, dist1, dist2, dist3, arg6);
+
+	// Stereo can't tell front from back: a sound right behind you pans the same as one
+	// right in front. Make sounds behind a bit quieter so turning towards them helps.
+	if (g_SndRearDampen > 0 && pos != NULL && vol > 0 && LOCALPLAYERCOUNT() == 1) {
+		struct player *player = g_Vars.players[0] ? g_Vars.players[0] : g_Vars.currentplayer;
+		if (player) {
+			const f32 dx = pos->x - player->cam_pos.x;
+			const f32 dz = pos->z - player->cam_pos.z;
+			if (dx * dx + dz * dz > 100.0f * 100.0f) {
+				f32 angle = -(atan2f(dx, dz) * 180.0f / M_PI + player->vv_theta);
+				while (angle > 180.0f) {
+					angle -= 360.0f;
+				}
+				while (angle < -180.0f) {
+					angle += 360.0f;
+				}
+				if (angle < 0.0f) {
+					angle = -angle;
+				}
+				if (angle > 90.0f) {
+					const f32 behind = (angle - 90.0f) / 90.0f;
+					vol = (s32)((f32)vol * (1.0f - behind * (f32)g_SndRearDampen / 100.0f));
+				}
+			}
+		}
+	}
+
+	return vol;
+#else
 	return psCalculateVolumeFromDistance(playerdist, dist1, dist2, dist3, arg6);
+#endif
 }
 
 s32 psCalculatePan3(s32 degrees, f32 arg1, struct pschannel *channel)

@@ -127,6 +127,16 @@ Jump is not in the original game; turn it off in `Options > Extended > Game > Ju
 
 Picking up a gun while holding nothing (Unarmed) switches to it. Turn that off in `Options > Extended > Game > Equip Pickups When Unarmed` (`Game.Player1.PickupAutoEquip=0`).
 
+Also in `Options > Extended > Game`, all on by default and not in the original game:
+* **Hit Markers**: an X over the crosshair when your shot hits someone (red when it kills) (`Game.Player1.HitMarkers`).
+* **Kill Sound**: a short tone when you kill someone (`Game.Player1.KillSound`).
+* **Teammate Names**: in team games and co-op, your teammates' names show over their heads, even through walls (`Game.Player1.TeamNames`).
+
+In Combat Simulator the death screen says who killed you and counts down to an automatic respawn
+(`Options > Extended > Auto Respawn`, `Game.MpAutoRespawn`, seconds, 0 = off; pressing fire still respawns as soon as the screen fades).
+`Options > Extended > Audio > Sounds Behind You Quieter` (`Audio.RearSoundDampen`, percent, default 30) makes sounds behind you a little quieter,
+since plain stereo can't tell front from back.
+
 Aim feel (`Options > Extended > Mouse / Controller`): **Aim Sensitivity** scales mouse look while aiming, **Raw Input** (on by default) bypasses Windows pointer speed and acceleration, **Look Curve** sets the controller look response (Original = the game's squared curve, down to Linear), and **Aim Assist** sets how far auto-aim pulls the crosshair (needs the game's Auto-Aim option on).
 
 ## Building

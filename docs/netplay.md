@@ -55,6 +55,16 @@ The host's cheats (picked in the Cheats menu before hosting) are sent to every p
 match or mission starts, so everyone plays with the same cheats. A player's own cheat choices
 don't apply in a network game. As in single player, the "weapons for Jo" cheats only work in Solo.
 
+### Scores, kills and the HUD
+
+The host decides every kill and sends it to everyone, along with the whole scoreboard whenever it
+changes, so all players see the same scores and the usual "Killed by" / "Killed" messages. The death
+screen shows who killed you and counts down to the respawn; the host's `Auto Respawn` setting
+(`Game.MpAutoRespawn`) applies to everyone. Hit markers come from the host too, so they show up about
+one round trip after the shot. Footsteps (yours, other players', guards' and simulants') play in network
+games, from where they are; the original only plays them with one player, since split screen players
+share the speakers.
+
 ### Misc
 
 * Everyone has to have the same ROM. The game only compares the file name, but different regions in one game will definitely break everything.
@@ -72,7 +82,9 @@ don't apply in a network game. As in single player, the "weapons for Jo" cheats 
 * Clients can't use the alt fire mode on the FarSight and probably a couple other guns.
 * Cloaking device is not synced.
 * Most likely only Combat works properly.
-* Simulants are run by the host; clients see them smoothly but slightly behind the host (about one round trip).
+* Simulants and guards are run by the host. Clients show them a little in the past (normally 2 to 6 frames,
+  more on an uneven connection; `pd.log` has a `chr display delay` line every 30 s) on top of the ping, and
+  smoothly in between the host's updates, at any frame rate.
 * The host decides hits on everyone using where it last heard each player was, so a player who has just
   ducked behind a wall can still be hit for about one round trip (your ping on `F9`).
 * Death floors, long falls and falling out of the level are decided by each player's own game (the host

@@ -59,6 +59,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "hudext.h"
 #endif
 
 s32 g_RecentQuipsPlayed[5];
@@ -4287,7 +4288,27 @@ void playerUpdateDamageStats(struct prop *attacker, struct prop *victim, f32 dam
  * explosion - true if damage is coming from an explosion
  * explosionpos - position of said explosion
  */
+#ifndef PLATFORM_N64
+static void chrDamageInner(struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
+		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2,
+		struct modelnode *node, struct model *model, s32 side, s16 *arg11,
+		bool explosion, struct coord *explosionpos);
+
 void chrDamage(struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
+		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2,
+		struct modelnode *node, struct model *model, s32 side, s16 *arg11,
+		bool explosion, struct coord *explosionpos)
+{
+	// hit markers: see who was alive before and after
+	const s32 wasdead = hudextChrIsDead(chr);
+	chrDamageInner(chr, damage, vector, gset, aprop, hitpart, damageshield, prop2, node, model, side, arg11, explosion, explosionpos);
+	hudextOnDamage(chr, aprop, damage, wasdead);
+}
+
+static void chrDamageInner(struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
+#else
+void chrDamage(struct chrdata *chr, f32 damage, struct coord *vector, struct gset *gset,
+#endif
 		struct prop *aprop, s32 hitpart, bool damageshield, struct prop *prop2,
 		struct modelnode *node, struct model *model, s32 side, s16 *arg11,
 		bool explosion, struct coord *explosionpos)

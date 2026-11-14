@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 19
+#define NET_PROTOCOL_VER 20
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -127,6 +127,8 @@ extern u64 g_NetRngSeeds[2];
 extern u32 g_NetRngLatch;
 
 extern u32 g_NetInterpTicks;
+extern u32 g_NetServerUpdateRate;
+extern s32 g_NetHostRespawnSecs;
 extern u32 g_NetServerPort;
 extern char g_NetLastJoinAddr[NET_MAX_ADDR + 1];
 

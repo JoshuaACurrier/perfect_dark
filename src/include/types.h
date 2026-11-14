@@ -2829,6 +2829,10 @@ struct player {
 	bool jumprequest; // jump button pressed this frame (or a remote player's jump arrived)
 	bool jumping;     // in the air because of a jump
 	bool netenvdeath; // net client: died to a death floor or fall here, the host hasn't confirmed yet
+	s32 killedby;     // mp chr index of whoever killed this player last (its own index for a suicide), -1 if not known
+	s32 deadtime60;   // how long this player has been dead (MP), for the respawn countdown
+	s32 hitmarktime60; // time left on the hit marker over the crosshair
+	bool hitmarkkill; // ... and whether that hit was a kill
 #endif
 };
 
@@ -6188,6 +6192,9 @@ struct extplayerconfig {
 	s32 usereloads;
 	s32 jump; // the Jump button works (not in the original game)
 	s32 autoequip; // picking up a gun while holding Unarmed switches to it (not in the original game)
+	s32 hitmarkers; // an X over the crosshair when your shot hits someone (not in the original game)
+	s32 killsound;  // a sound when you kill someone (not in the original game)
+	s32 teamnames;  // teammates' names over their heads (not in the original game)
 	f32 aimsens;   // mouse look speed multiplier while aiming (R / right mouse)
 	f32 lookcurve; // controller look response: stick^lookcurve (2 = the original game)
 	f32 aimassist; // how far auto-aim pulls the crosshair to a target, 0..1 (1 = the original game)

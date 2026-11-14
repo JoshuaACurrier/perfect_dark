@@ -20,6 +20,8 @@
 #include "utils.h"
 #include "net/net.h"
 #include "game/cheats.h"
+#include "hudext.h"
+#include "game/propsnd.h"
 
 u32 g_OsMemSize = 0;
 s32 g_OsMemSizeMb = 16;
@@ -184,8 +186,10 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Game.ExtraSleep", &g_TickExtraSleep, 0, 1);
 	configRegisterInt("Game.SkipIntro", &g_SkipIntro, 0, 1);
 	configRegisterInt("Game.DisableMpDeathMusic", &g_MusicDisableMpDeath, 0, 1);
+	configRegisterInt("Audio.RearSoundDampen", &g_SndRearDampen, 0, 100);
 	configRegisterInt("Game.GEMuzzleFlashes", &g_BgunGeMuzzleFlashes, 0, 1);
 	configRegisterInt("Game.MaxExplosions", &g_MaxExplosions, 6, 96);
+	configRegisterInt("Game.MpAutoRespawn", &g_MpAutoRespawnSecs, 0, 30);
 	configRegisterInt("Game.UnlockAllCheats", &g_CheatsUnlockAll, 0, 1);
 	for (s32 j = 0; j < MAX_LOCAL_PLAYERS; ++j) {
 		const s32 i = j + 1;
@@ -205,6 +209,9 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 		configRegisterInt(strFmt("Game.Player%d.UseKeyReloads", i), &g_PlayerExtCfg[j].usereloads, 0, false);
 		configRegisterInt(strFmt("Game.Player%d.Jump", i), &g_PlayerExtCfg[j].jump, 0, 1);
 		configRegisterInt(strFmt("Game.Player%d.PickupAutoEquip", i), &g_PlayerExtCfg[j].autoequip, 0, 1);
+		configRegisterInt(strFmt("Game.Player%d.HitMarkers", i), &g_PlayerExtCfg[j].hitmarkers, 0, 1);
+		configRegisterInt(strFmt("Game.Player%d.KillSound", i), &g_PlayerExtCfg[j].killsound, 0, 1);
+		configRegisterInt(strFmt("Game.Player%d.TeamNames", i), &g_PlayerExtCfg[j].teamnames, 0, 1);
 		configRegisterFloat(strFmt("Game.Player%d.AimSensitivity", i), &g_PlayerExtCfg[j].aimsens, 0.1f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.LookCurve", i), &g_PlayerExtCfg[j].lookcurve, 1.f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.AimAssist", i), &g_PlayerExtCfg[j].aimassist, 0.f, 1.f);

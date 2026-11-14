@@ -9,6 +9,8 @@
 //   --net-scenario N         (host) MPSCENARIO_*
 //   --net-coop STAGE         (host) start a co-op mission on STAGE (e.g. 0x30 Defection) instead of Combat Sim
 //   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
+//   --net-teams              (host) teams on: the players and every other simulant against the rest
+//   --net-hudtest            keep the hit marker on screen (for screenshots)
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
 //   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
 //   --net-rounds N           (host) auto-start up to N matches in a row (each needs --net-autoabort or a
@@ -39,6 +41,8 @@
 #include "game/pdmode.h"
 #include "game/title.h"
 #include "game/mplayer/mplayer.h"
+#include "game/mplayer/setup.h"
+#include "game/footstep.h"
 #include "lib/model.h"
 #include "lib/main.h"
 #include "system.h"
@@ -58,6 +62,8 @@ static s32 g_NetAutoAborted = 0;
 static s32 g_NetAutoRounds = 1;
 static u32 g_NetAutoMatchTicks = 0;
 static s32 g_NetAutoKillSecs = 0;
+static s32 g_NetAutoHudTest = 0;
+static s32 g_NetAutoTeams = 0;
 static s32 g_NetAutoAlarmSecs = 0;
 static u64 g_NetAutoCheats = 0;
 static const char *g_NetAutoName = NULL;
@@ -91,6 +97,8 @@ void netAutoInit(void)
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
 	g_NetAutoRounds = sysArgGetInt("--net-rounds", 1);
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
+	g_NetAutoHudTest = sysArgCheck("--net-hudtest");
+	g_NetAutoTeams = sysArgCheck("--net-teams");
 	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
 	const char *cheats = sysArgGetString("--net-cheats");
 	g_NetAutoCheats = (cheats && cheats[0]) ? strtoull(cheats, NULL, 0) : 0;
@@ -119,7 +127,7 @@ void netAutoInit(void)
 	if (dumppath && dumppath[0]) {
 		g_NetDumpFile = fopen(dumppath, "wb");
 		if (g_NetDumpFile) {
-			fprintf(g_NetDumpFile, "tick,syncid,type,x,y,z,theta,act,anim,frame,dead,damage,weapon,room\n");
+			fprintf(g_NetDumpFile, "tick,syncid,type,x,y,z,theta,act,anim,frame,dead,damage,weapon,room,ms\n");
 			sysLogPrintf(LOG_NOTE, "NET: dumping chr state to %s", dumppath);
 		} else {
 			sysLogPrintf(LOG_WARNING, "NET: could not open dump file %s", dumppath);
@@ -186,6 +194,17 @@ static void netAutoStartMatch(void)
 		const s32 profile = (g_NetAutoSimDiff >= 0 && g_NetAutoSimDiff < NUM_BOTDIFFS) ? g_NetAutoSimDiff : BOTDIFF_NORMAL;
 		for (s32 i = 0; i < g_NetAutoSims; ++i) {
 			mpCreateBotFromProfile(i, profile);
+		}
+	}
+
+	if (g_NetAutoTeams) {
+		// players against simulants
+		g_MpSetup.options |= MPOPTION_TEAMSENABLED;
+		for (s32 i = 0; i < MAX_PLAYERS; ++i) {
+			g_PlayerConfigsArray[i].base.team = 0;
+		}
+		for (s32 i = 0; i < MAX_BOTS; ++i) {
+			g_BotConfigsArray[i].base.team = (i & 1) ? 0 : 1;
 		}
 	}
 
@@ -291,6 +310,26 @@ static void netAutoTickQuit(void)
 		sysLogPrintf(LOG_NOTE, "NET: autoquit after %d seconds in game; sent %u bytes (%u/s), received %u bytes (%u/s)",
 			g_NetAutoQuitSecs, netStatBytesSent(), netStatBytesSent() / g_NetAutoQuitSecs,
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
+		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
+		if (g_Vars.mplayerisrunning) {
+			// the scoreboard as this machine sees it, to compare host and clients
+			for (s32 i = 0; i < g_MpNumChrs; ++i) {
+				struct mpchrconfig *cfg = g_MpAllChrConfigPtrs[i];
+				const s32 mpindex = func0f18d074(i);
+				if (!cfg || mpindex < 0) {
+					continue;
+				}
+				s32 score = 0, deaths = 0;
+				scenarioCalculatePlayerScore(cfg, mpindex, &score, &deaths);
+				char name[MAX_PLAYERNAME + 1];
+				snprintf(name, sizeof(name), "%s", cfg->name);
+				char *nl = strchr(name, '\n');
+				if (nl) {
+					*nl = '\0';
+				}
+				sysLogPrintf(LOG_NOTE, "NET: score: %-12s score %d deaths %d", name, score, deaths);
+			}
+		}
 		if (g_NetDumpFile) {
 			fclose(g_NetDumpFile);
 			g_NetDumpFile = NULL;
@@ -327,10 +366,10 @@ static void netAutoTickDump(void)
 		const s32 anim = chr->model ? modelGetAnimNum(chr->model) : -1;
 		const f32 frame = chr->model ? modelGetCurAnimFrame(chr->model) : 0.f;
 
-		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,%.4f,%d,%d,%.2f,%d,%.3f,%d,%d\n",
+		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,%.4f,%d,%d,%.2f,%d,%.3f,%d,%d,%.2f\n",
 			g_NetTick, prop->syncid, prop->type, prop->pos.x, prop->pos.y, prop->pos.z,
 			chrGetInverseTheta(chr), chr->actiontype, anim, frame, chrIsDead(chr) ? 1 : 0,
-			chr->damage, weaponnum, prop->rooms[0]);
+			chr->damage, weaponnum, prop->rooms[0], (f64)sysGetMicroseconds() / 1000.0);
 	}
 
 	// guns lying in the world (dropped by chrs or placed by the stage), to catch
@@ -339,9 +378,9 @@ static void netAutoTickDump(void)
 		if (prop->type != PROPTYPE_WEAPON || !prop->syncid || !prop->weapon) {
 			continue;
 		}
-		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,0,-1,-1,0,0,0,%d,%d\n",
+		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,0,-1,-1,0,0,0,%d,%d,%.2f\n",
 			g_NetTick, prop->syncid, prop->type, prop->pos.x, prop->pos.y, prop->pos.z,
-			prop->weapon->weaponnum, prop->rooms[0]);
+			prop->weapon->weaponnum, prop->rooms[0], (f64)sysGetMicroseconds() / 1000.0);
 	}
 
 	fflush(g_NetDumpFile);
@@ -442,6 +481,12 @@ void netAutoTick(void)
 	netAutoTickKill();
 	netAutoTickAlarm();
 	netAutoTickQuit();
+
+	// keep the hit marker up (alternating hit / kill every 2 s) so screenshots catch it
+	if (g_NetAutoHudTest && g_NetLocalClient && g_NetLocalClient->state == CLSTATE_GAME && g_NetLocalClient->player) {
+		g_NetLocalClient->player->hitmarktime60 = 30;
+		g_NetLocalClient->player->hitmarkkill = (g_NetAutoGameTicks / 120) & 1;
+	}
 }
 
 /* autopilot */

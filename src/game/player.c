@@ -76,6 +76,8 @@
 #include "input.h"
 #include "string.h"
 #include "net/net.h"
+#include "system.h"
+#include "hudext.h"
 #include "net/netmsg.h"
 #endif
 
@@ -679,6 +681,9 @@ void playerStartNewLife(void)
 	}
 
 #ifndef PLATFORM_N64
+	g_Vars.currentplayer->netenvdeath = false;
+	g_Vars.currentplayer->deadtime60 = 0;
+
 	if (g_NetMode == NETMODE_SERVER && g_Vars.currentplayer->isremote && g_Vars.currentplayer->client) {
 		// the host picked the spawn point: put the client there, and forget the moves from its
 		// last life, which would otherwise drag the new copy back to where it died
@@ -4752,6 +4757,9 @@ Gfx *playerRenderHud(Gfx *gdl)
 
 	if (g_Vars.currentplayer->isdead) {
 		g_Vars.currentplayer->coopcanrestart = false;
+#ifndef PLATFORM_N64
+		g_Vars.currentplayer->deadtime60 += g_Vars.lvupdate60;
+#endif
 
 		if (g_Vars.currentplayer->deathanimfinished == false) {
 			bool pass = false;
@@ -4943,6 +4951,15 @@ Gfx *playerRenderHud(Gfx *gdl)
 							canrestart = true;
 						}
 
+#ifndef PLATFORM_N64
+						// respawn on our own after a while (the host decides for everyone in net games)
+						if (g_NetMode != NETMODE_CLIENT && hudextRespawnSecs() > 0
+								&& g_Vars.currentplayer->deadtime60 >= hudextRespawnSecs() * 60
+								&& !mpIsPaused() && g_NumReasonsToEndMpMatch == 0) {
+							canrestart = true;
+						}
+#endif
+
 						if (canrestart) {
 							g_Vars.currentplayer->dostartnewlife = true;
 						}
@@ -4953,6 +4970,10 @@ Gfx *playerRenderHud(Gfx *gdl)
 	}
 
 	if (g_Vars.currentplayer->cameramode != CAMERAMODE_EYESPY) {
+#ifndef PLATFORM_N64
+		gdl = hudextDrawTeamNames(gdl);
+		gdl = hudextDrawDeath(gdl);
+#endif
 		gdl = bgunDrawSight(gdl);
 
 		if (bgunGetWeaponNum(HAND_RIGHT) == WEAPON_HORIZONSCANNER) {
@@ -5055,6 +5076,15 @@ void playerDieByShooter(u32 shooter, bool force)
 		g_MpPlayerNum = prevplayernum;
 
 		hudmsgsRemoveForDeadPlayer(g_Vars.currentplayernum);
+
+#ifndef PLATFORM_N64
+		if (g_NetMode) {
+			sysLogPrintf(LOG_NOTE, "NET: player %d died (shooter %d, force %d) at tick %u at (%.0f %.0f %.0f), life %d ticks",
+				g_Vars.currentplayernum, shooter, force, g_NetTick, g_Vars.currentplayer->prop->pos.x,
+				g_Vars.currentplayer->prop->pos.y, g_Vars.currentplayer->prop->pos.z,
+				playerGetMissionTime() - g_Vars.currentplayer->lifestarttime60);
+		}
+#endif
 
 		if (g_Vars.mplayerisrunning) {
 			mpstatsRecordDeath(shooter, g_Vars.currentplayernum);

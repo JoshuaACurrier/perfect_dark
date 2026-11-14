@@ -22,6 +22,7 @@
 #ifndef PLATFORM_N64
 #include <math.h>
 #include "video.h"
+#include "hudext.h"
 
 #define SIGHT_COLOUR ((PLAYER_EXTCFG().crosshairhealth >= CROSSHAIR_HEALTH_ON_GREEN) ? sightGetCrosshairHealthColor(g_Vars.currentplayer->bondhealth, g_Vars.currentplayer->prop->chr->cshield * 0.125f) : PLAYER_EXTCFG().crosshaircolour)
 #define SIGHT_SCALE PLAYER_EXTCFG().crosshairsize
@@ -1678,6 +1679,10 @@ Gfx *sightDraw(Gfx *gdl, bool sighton, s32 sight)
 			gdl = sightDrawTarget(gdl, crossx, crossy);
 		}
 	}
+
+#ifndef PLATFORM_N64
+	gdl = hudextDrawHitmark(gdl, sightGetAdjustedX((s32)crossx / g_ScaleX), crossy);
+#endif
 
 	g_ScaleX = 1;
 

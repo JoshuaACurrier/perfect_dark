@@ -13,6 +13,8 @@
 #include "game/player.h"
 #include "game/cheats.h"
 #include "net/net.h"
+#include "hudext.h"
+#include "game/propsnd.h"
 #include "lib/joy.h"
 #include "video.h"
 #include "input.h"
@@ -1430,6 +1432,20 @@ static MenuItemHandlerResult menuhandlerDisableMpDeathMusic(s32 operation, struc
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerRearDampen(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_SndRearDampen;
+		break;
+	case MENUOP_SET:
+		g_SndRearDampen = data->slider.value;
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedAudioMenuItems[] = {
 	{
 		MENUITEMTYPE_CHECKBOX,
@@ -1438,6 +1454,14 @@ struct menuitem g_ExtendedAudioMenuItems[] = {
 		(uintptr_t)"Disable MP Death Music",
 		0,
 		menuhandlerDisableMpDeathMusic,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Sounds Behind You Quieter",
+		100,
+		menuhandlerRearDampen,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,
@@ -1490,6 +1514,45 @@ static MenuItemHandlerResult menuhandlerAutoEquip(s32 operation, struct menuitem
 	case MENUOP_SET:
 		g_PlayerExtCfg[g_ExtMenuPlayer].autoequip = data->checkbox.value;
 		netClientSettingsChanged();
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerHitMarkers(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].hitmarkers;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].hitmarkers = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerKillSound(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].killsound;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].killsound = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerTeamNames(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].teamnames;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].teamnames = data->checkbox.value;
 		break;
 	}
 
@@ -1806,6 +1869,30 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		(uintptr_t)"Equip Pickups When Unarmed",
 		0,
 		menuhandlerAutoEquip,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Hit Markers",
+		0,
+		menuhandlerHitMarkers,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Kill Sound",
+		0,
+		menuhandlerKillSound,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Teammate Names",
+		0,
+		menuhandlerTeamNames,
 	},
 	{
 		MENUITEMTYPE_SLIDER,
@@ -2201,6 +2288,20 @@ static MenuItemHandlerResult menuhandlerUnlockAllCheats(s32 operation, struct me
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerAutoRespawn(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_MpAutoRespawnSecs;
+		break;
+	case MENUOP_SET:
+		g_MpAutoRespawnSecs = data->slider.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerOpenGameMenu(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
@@ -2275,6 +2376,14 @@ struct menuitem g_ExtendedMenuItems[] = {
 		(uintptr_t)"Unlock All Cheats",
 		0,
 		menuhandlerUnlockAllCheats,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Auto Respawn (secs, 0 = off)",
+		30,
+		menuhandlerAutoRespawn,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,

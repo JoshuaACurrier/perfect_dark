@@ -58,6 +58,11 @@ static void bwalkEnvDeath(void)
 
 	if (g_NetMode == NETMODE_CLIENT) {
 		if (!pl->isremote && !pl->isdead) {
+			if (!pl->netenvdeath) {
+				sysLogPrintf(LOG_NOTE, "NET: local env death at (%.0f %.0f %.0f) manground %.0f ground %.0f falling %d floorflags 0x%x",
+					pl->prop->pos.x, pl->prop->pos.y, pl->prop->pos.z, pl->vv_manground, pl->vv_ground,
+					pl->isfalling, pl->floorflags);
+			}
 			pl->netenvdeath = true;
 		}
 		return;

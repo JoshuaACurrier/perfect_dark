@@ -11,6 +11,9 @@
 #include "lib/mtx.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#endif
 
 s32 g_FootstepSounds[] = {
 	/* none   */ -1,                -1,                -1,                -1,                -1,                -1,                -1,                -1,
@@ -153,9 +156,25 @@ s32 footstepChooseSound(struct chrdata *chr, s32 footstepindex)
  *
  * It is assumed that the chr is moving normally and not via magic.
  */
+// The original only plays footsteps with one player, since split screen players share
+// the speakers. In a net game every player has their own.
+#ifndef PLATFORM_N64
+s32 g_FootstepsPlayed = 0; // for the net test tools
+#endif
+
+static bool footstepsAllowed(void)
+{
+#ifndef PLATFORM_N64
+	if (g_NetMode && LOCALPLAYERCOUNT() == 1) {
+		return true;
+	}
+#endif
+	return PLAYERCOUNT() == 1;
+}
+
 void footstepCheckDefault(struct chrdata *chr)
 {
-	if (debugIsFootstepsEnabled() && PLAYERCOUNT() == 1 && chr) {
+	if (debugIsFootstepsEnabled() && footstepsAllowed() && chr) {
 		chr->footstep = 0;
 		chr->magicanim = -1;
 		chr->magicframe = 0;
@@ -200,6 +219,9 @@ void footstepCheckDefault(struct chrdata *chr)
 					if (soundnum != -1 && chr->footstep != 0) {
 #if VERSION >= VERSION_NTSC_1_0
 						psCreate(NULL, chr->prop, soundnum, -1, -1, PSFLAG_0400, 0, PSTYPE_FOOTSTEP, NULL, -1, NULL, -1, -1, -1, -1);
+#ifndef PLATFORM_N64
+						++g_FootstepsPlayed;
+#endif
 #else
 						psCreate(NULL, chr->prop, soundnum, -1, -1, 0, 0, PSTYPE_NONE, NULL, -1, NULL, -1, -1, -1, -1);
 #endif
@@ -236,7 +258,7 @@ void footstepCheckMagic(struct chrdata *chr)
 	f32 zdiff;
 	s32 soundnum;
 
-	if (debugIsFootstepsEnabled() && PLAYERCOUNT() == 1 && chr->magicanim >= 0) {
+	if (debugIsFootstepsEnabled() && footstepsAllowed() && chr->magicanim >= 0) {
 #if VERSION >= VERSION_PAL_BETA
 		chr->magicframe += g_Vars.lvupdate60freal * chr->magicspeed;
 #else

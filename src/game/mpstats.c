@@ -16,6 +16,10 @@
 #include "bss.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netmsg.h"
+#endif
 
 u32 var80070590 = 0x00000000;
 
@@ -234,6 +238,22 @@ void mpstatsRecordDeath(s32 aplayernum, s32 vplayernum)
 	s32 prevplayernum;
 	char text[256];
 
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_CLIENT && !g_NetApplyingKill) {
+		// the host decides who killed whom and tells us (SVC_MP_KILL)
+		return;
+	}
+
+	if (g_NetMode == NETMODE_SERVER) {
+		netmsgSvcMpKillWrite(&g_NetMsgRel, aplayernum, vplayernum);
+	}
+
+	if (vplayernum >= 0 && vplayernum < PLAYERCOUNT() && g_Vars.players[vplayernum]) {
+		g_Vars.players[vplayernum]->killedby = aplayernum >= 0 ? aplayernum : vplayernum;
+	}
+
+	if (g_NetMode != NETMODE_CLIENT)
+#endif
 	if (g_Vars.normmplayerisrunning && g_MpSetup.scenario == MPSCENARIO_POPACAP) {
 		pacHandleDeath(aplayernum, vplayernum);
 	}

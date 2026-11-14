@@ -8,4 +8,8 @@ s32 footstepChooseSound(struct chrdata *chr, s32 index);
 void footstepCheckDefault(struct chrdata *chr);
 void footstepCheckMagic(struct chrdata *chr);
 
+#ifndef PLATFORM_N64
+extern s32 g_FootstepsPlayed;
+#endif
+
 #endif

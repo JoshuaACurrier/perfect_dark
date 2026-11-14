@@ -33,6 +33,9 @@
 #define SVC_HUDMSG        0x51 // hud message from a mission script
 #define SVC_MISSIONSTATE  0x52 // alarm, gas and countdown timer
 #define SVC_MUSIC         0x53 // a mission script changed the music
+#define SVC_MP_KILL       0x60 // someone killed someone (combat sim)
+#define SVC_MP_SCORES     0x61 // the whole scoreboard (sent when it changes)
+#define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing
@@ -93,5 +96,15 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);
 u32 netmsgSvcChrShotRead(struct netbuf *src, struct netclient *srccl);
+
+// kills, the scoreboard and hit markers
+extern s32 g_NetApplyingKill;
+u32 netmsgSvcMpKillWrite(struct netbuf *dst, s32 aplayernum, s32 vplayernum);
+u32 netmsgSvcMpKillRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcMpScoresWrite(struct netbuf *dst);
+u32 netmsgSvcMpScoresRead(struct netbuf *src, struct netclient *srccl);
+void netmsgMpScoresTick(void);
+u32 netmsgSvcHitmarkWrite(struct netclient *dstcl, bool kill);
+u32 netmsgSvcHitmarkRead(struct netbuf *src, struct netclient *srccl);
 
 #endif

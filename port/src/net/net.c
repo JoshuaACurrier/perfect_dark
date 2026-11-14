@@ -800,6 +800,9 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_HUDMSG: rc = netmsgSvcHudmsgRead(&cl->in, cl); break;
 			case SVC_MISSIONSTATE: rc = netmsgSvcMissionStateRead(&cl->in, cl); break;
 			case SVC_MUSIC: rc = netmsgSvcMusicRead(&cl->in, cl); break;
+			case SVC_MP_KILL: rc = netmsgSvcMpKillRead(&cl->in, cl); break;
+			case SVC_MP_SCORES: rc = netmsgSvcMpScoresRead(&cl->in, cl); break;
+			case SVC_HITMARK: rc = netmsgSvcHitmarkRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -941,6 +944,7 @@ void netEndFrame(void)
 				// chr snapshots go out at the same rate as player updates
 				netchrServerSend();
 				netcoopServerTick();
+				netmsgMpScoresTick();
 				g_NetNextUpdate = g_NetTick + g_NetServerUpdateRate;
 			}
 		}
