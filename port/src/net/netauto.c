@@ -11,6 +11,8 @@
 //   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
 //   --net-autoquit SECS      quit the game SECS seconds after the match starts
 //   --net-autoabort SECS     (host) abort the mission SECS seconds after it starts, to test the end screens
+//   --net-rounds N           (host) auto-start up to N matches in a row (each needs --net-autoabort or a
+//                            normal ending, then a way back to the lobby); default 1
 //   --net-autokill SECS      (host) every SECS seconds, shoot the chr nearest to one of the players
 //   --net-autoalarm SECS     (host) alarm and a 60 s countdown on at SECS, both off at 2*SECS
 //   --net-cheats MASK        (host) turn on these cheats (bit = CHEAT_* number; 64-bit, e.g. 0x4 invincible)
@@ -34,6 +36,8 @@
 #include "game/chraction.h"
 #include "game/menu.h"
 #include "game/propobj.h"
+#include "game/pdmode.h"
+#include "game/title.h"
 #include "game/mplayer/mplayer.h"
 #include "lib/model.h"
 #include "lib/main.h"
@@ -51,6 +55,8 @@ static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
 static s32 g_NetAutoAbortSecs = 0;
 static s32 g_NetAutoAborted = 0;
+static s32 g_NetAutoRounds = 1;
+static u32 g_NetAutoMatchTicks = 0;
 static s32 g_NetAutoKillSecs = 0;
 static s32 g_NetAutoAlarmSecs = 0;
 static u64 g_NetAutoCheats = 0;
@@ -83,6 +89,7 @@ void netAutoInit(void)
 	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
+	g_NetAutoRounds = sysArgGetInt("--net-rounds", 1);
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
 	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
 	const char *cheats = sysArgGetString("--net-cheats");
@@ -189,9 +196,46 @@ static void netAutoStartMatch(void)
 	menuStop();
 }
 
+// with --net-rounds: once a match has ended on the host, skip its end screens and go back to the
+// lobby, the same way closing them would (see menutick.c), so the next round can auto-start
+static void netAutoTickReturnToLobby(void)
+{
+	static u32 endedtick = 0;
+
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoStarted == 0 || g_NetAutoStarted >= g_NetAutoRounds
+			|| g_NetLocalClient->state != CLSTATE_LOBBY || g_StageNum == STAGE_CITRAINING || g_StageNum == STAGE_TITLE) {
+		endedtick = 0;
+		return;
+	}
+
+	if (!endedtick) {
+		endedtick = g_NetTick;
+		return;
+	}
+
+	if (g_NetTick - endedtick < 5 * 60) {
+		return;
+	}
+
+	endedtick = 0;
+	sysLogPrintf(LOG_NOTE, "NET: autostart: skipping the end screens, back to the lobby");
+
+	menuStop();
+	mpSetPaused(MPPAUSEMODE_UNPAUSED);
+	g_Vars.mplayerisrunning = false;
+	g_Vars.normmplayerisrunning = false;
+	g_Vars.lvmpbotlevel = 0;
+	titleSetNextStage(STAGE_CITRAINING);
+	setNumPlayers(1);
+	titleSetNextMode(TITLEMODE_SKIP);
+	mainChangeToStage(STAGE_CITRAINING);
+}
+
 static void netAutoTickStart(void)
 {
-	if (g_NetMode != NETMODE_SERVER || g_NetAutoStartPlayers <= 0 || g_NetAutoStarted) {
+	netAutoTickReturnToLobby();
+
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoStartPlayers <= 0 || g_NetAutoStarted >= g_NetAutoRounds) {
 		return;
 	}
 
@@ -215,7 +259,9 @@ static void netAutoTickStart(void)
 	if (!g_NetAutoReadyTick) {
 		g_NetAutoReadyTick = g_NetTick + 120;
 	} else if (g_NetTick >= g_NetAutoReadyTick) {
-		g_NetAutoStarted = 1;
+		++g_NetAutoStarted;
+		g_NetAutoAborted = 0;
+		g_NetAutoMatchTicks = 0;
 		netAutoStartMatch();
 	}
 }
@@ -226,10 +272,11 @@ static void netAutoTickQuit(void)
 {
 	if (g_NetLocalClient && g_NetLocalClient->state == CLSTATE_GAME) {
 		++g_NetAutoGameTicks;
+		++g_NetAutoMatchTicks;
 	}
 
 	if (g_NetMode == NETMODE_SERVER && g_NetAutoAbortSecs > 0 && !g_NetAutoAborted
-			&& g_NetAutoGameTicks >= (u32)g_NetAutoAbortSecs * 60 && g_Vars.players[0]) {
+			&& g_NetAutoMatchTicks >= (u32)g_NetAutoAbortSecs * 60 && g_Vars.players[0]) {
 		g_NetAutoAborted = 1;
 		sysLogPrintf(LOG_NOTE, "NET: autoabort after %d seconds in game", g_NetAutoAbortSecs);
 		g_Vars.players[0]->aborted = true; // the host's local player is always 0

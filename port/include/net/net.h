@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 17
+#define NET_PROTOCOL_VER 18
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -149,6 +149,8 @@ void netEndFrame(void);
 
 s32 netStartServer(u16 port, s32 maxclients);
 s32 netIsUnlockAll(void);
+s32 netServerHasWaitingClients(void);
+extern s32 g_NetJoinedMidMatch; // client: connected while the host was in a match, waiting for the next one
 s32 netStartClient(const char *addr);
 
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan);

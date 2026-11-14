@@ -164,7 +164,11 @@ static const char *menutextJoinAddress(struct menuitem *item)
 		} else if (g_NetLocalClient->state == CLSTATE_AUTH) {
 			snprintf(tmp, sizeof(tmp), "Authenticating with %s...\n", g_NetJoinAddr);
 		} else if (g_NetLocalClient->state == CLSTATE_LOBBY) {
-			snprintf(tmp, sizeof(tmp), "Waiting for host...\n");
+			if (g_NetJoinedMidMatch) {
+				snprintf(tmp, sizeof(tmp), "Match in progress.\nYou'll join when the host starts the next one...\n");
+			} else {
+				snprintf(tmp, sizeof(tmp), "Waiting for host...\n");
+			}
 		}
 	} else {
 		// label

@@ -8,6 +8,7 @@
 #   -H "ARGS"   extra args for the host only
 #   -C "ARGS"   extra args for the clients only
 #   -k          keep the instances running (don't kill them)
+#   -d SECS     start the last client SECS seconds late (to test joining mid-match)
 #
 # env:
 #   PD_EXE      path to pd.x86_64.exe (default: build/pd.x86_64.exe)
@@ -29,14 +30,16 @@ TIME=40
 HOSTARGS=""
 CLIENTARGS=""
 KEEP=0
+LATE=0
 
-while getopts "c:t:H:C:k" opt; do
+while getopts "c:t:H:C:kd:" opt; do
 	case "$opt" in
 		c) NCLIENTS="$OPTARG" ;;
 		t) TIME="$OPTARG" ;;
 		H) HOSTARGS="$OPTARG" ;;
 		C) CLIENTARGS="$OPTARG" ;;
 		k) KEEP=1 ;;
+		d) LATE="$OPTARG" ;;
 		*) exit 1 ;;
 	esac
 done
@@ -68,6 +71,7 @@ launch() {
 launch host --host $HOSTARGS $COMMON
 sleep 5
 for i in $(seq 1 "$NCLIENTS"); do
+	if [ "$LATE" -gt 0 ] && [ "$i" = "$NCLIENTS" ]; then sleep "$LATE"; fi
 	# shellcheck disable=SC2086
 	launch "client$i" --connect 127.0.0.1 $CLIENTARGS $COMMON
 	sleep 1

@@ -231,7 +231,11 @@ u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl)
 
 	sysLogPrintf(LOG_NOTE, "NET: %s (%u) joined", srccl->settings.name, srccl->id);
 
-	netChatPrintf(NULL, "%s joined", name);
+	if (g_NetLocalClient->state >= CLSTATE_GAME) {
+		netChatPrintf(NULL, "%s joined and will play from the next match", name);
+	} else {
+		netChatPrintf(NULL, "%s joined", name);
+	}
 
 	return 0;
 }
@@ -251,7 +255,7 @@ u32 netmsgClcChatRead(struct netbuf *src, struct netclient *srccl)
 		sysLogPrintf(LOG_CHAT, "%s", msg);
 		netbufStartWrite(&g_NetMsgRel);
 		netmsgSvcChatWrite(&g_NetMsgRel, msg);
-		netSend(NULL, &g_NetMsgRel, true, NETCHAN_DEFAULT);
+		netSend(NULL, &g_NetMsgRel, true, NETCHAN_CONTROL); // control channel, so players waiting in the lobby see it too
 	}
 	return src->error;
 }
@@ -354,6 +358,7 @@ u32 netmsgSvcAuthWrite(struct netbuf *dst, struct netclient *authcl)
 	netbufWriteU8(dst, authcl - g_NetClients);
 	netbufWriteU8(dst, g_NetMaxClients);
 	netbufWriteU32(dst, g_NetTick);
+	netbufWriteU8(dst, g_NetLocalClient->state >= CLSTATE_GAME); // match in progress
 	return dst->error;
 }
 
@@ -367,12 +372,14 @@ u32 netmsgSvcAuthRead(struct netbuf *src, struct netclient *srccl)
 	const u8 id = netbufReadU8(src);
 	const u8 maxclients = netbufReadU8(src);
 	g_NetTick = netbufReadU32(src);
+	g_NetJoinedMidMatch = netbufReadU8(src);
 	if (g_NetLocalClient->in.error || id == NET_NULL_CLIENT || id == 0 || maxclients == 0) {
 		sysLogPrintf(LOG_WARNING, "NET: malformed SVC_AUTH from server");
 		return 1;
 	}
 
-	sysLogPrintf(LOG_NOTE, "NET: SVC_AUTH from server, our ID is %u", id);
+	sysLogPrintf(LOG_NOTE, "NET: SVC_AUTH from server, our ID is %u%s", id,
+		g_NetJoinedMidMatch ? " (match in progress, waiting for the next one)" : "");
 
 	// there's at least one client, which is us, and we know maxclients as well
 	g_NetMaxClients = maxclients;
@@ -515,6 +522,7 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 	g_NetRngSeeds[0] = netbufReadU64(src);
 	g_NetRngSeeds[1] = netbufReadU64(src);
 	g_NetRngLatch = true;
+	g_NetJoinedMidMatch = false;
 
 	const u8 stagenum = netbufReadU8(src);
 
@@ -711,6 +719,13 @@ u32 netmsgSvcStageEndRead(struct netbuf *src, struct netclient *srccl)
 	const u8 abortedmask = netbufReadU8(src);
 
 	if (src->error) {
+		return src->error;
+	}
+
+	if (g_NetLocalClient->state != CLSTATE_GAME) {
+		// we joined while this match was running and sat it out in the lobby
+		sysLogPrintf(LOG_NOTE, "NET: SVC_STAGE_END for a match we weren't in, the next one includes us");
+		g_NetJoinedMidMatch = false;
 		return src->error;
 	}
 

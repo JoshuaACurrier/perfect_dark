@@ -48,6 +48,7 @@ s32 g_NetServerInfoQuery = true;
 // and every co-op mission and difficulty, can be picked without unlocking it
 // first; the local save file is not changed
 s32 g_NetUnlockAll = true;
+s32 g_NetJoinedMidMatch = false;
 
 u32 g_NetClientUpdateRate = 1;
 u32 g_NetClientInRate = 128 * 1024;
@@ -671,10 +672,10 @@ static void netServerEvConnect(ENetPeer *peer, const u32 data)
 		return;
 	}
 
+	// joining during a match is fine: the new client waits in the lobby state (game messages
+	// aren't sent to it, see netSend) and gets a player when the host starts the next match
 	if (g_NetLocalClient && g_NetLocalClient->state > CLSTATE_LOBBY) {
-		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: %s rejected: late joins not allowed", addrstr);
-		enet_peer_disconnect(peer, DISCONNECT_LATE);
-		return;
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: %s is joining mid-match, will play from the next match", addrstr);
 	}
 
 	struct netclient *cl = NULL;
@@ -965,6 +966,22 @@ u32 netStatBytesReceived(void)
 	return g_NetHost ? enet_host_get_bytes_received(g_NetHost) : 0;
 }
 
+// true while the host is in a match and someone connected is still in the lobby
+s32 netServerHasWaitingClients(void)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return false;
+	}
+
+	for (s32 i = 1; i < g_NetMaxClients; ++i) {
+		if (g_NetClients[i].state && g_NetClients[i].state < CLSTATE_GAME) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan)
 {
 	if (g_NetMode == NETMODE_CLIENT) {
@@ -987,8 +1004,23 @@ u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, con
 			return 0;
 		}
 
-		// goes straight to enet unless lag/loss simulation is on
-		netSimSend(g_NetHost, dstcl ? dstcl->peer : NULL, chan, p, reliable);
+		if (!dstcl && g_NetMode == NETMODE_SERVER && chan != NETCHAN_CONTROL && netServerHasWaitingClients()) {
+			// mid-match with someone waiting in the lobby: game messages only go to the
+			// clients that are in the match (control messages like chat go to everyone)
+			for (s32 i = 1; i < g_NetMaxClients; ++i) {
+				struct netclient *cl = &g_NetClients[i];
+				if (cl->state >= CLSTATE_GAME && cl->peer) {
+					ENetPacket *cp = enet_packet_create(buf->data, buf->wp, flags);
+					if (cp) {
+						netSimSend(g_NetHost, cl->peer, chan, cp, reliable);
+					}
+				}
+			}
+			enet_packet_destroy(p);
+		} else {
+			// goes straight to enet unless lag/loss simulation is on
+			netSimSend(g_NetHost, dstcl ? dstcl->peer : NULL, chan, p, reliable);
+		}
 	}
 
 	const u32 ret = buf->wp;

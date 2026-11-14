@@ -25,6 +25,10 @@ Expect nothing to work right.
 4. The game will start automatically.
 5. After the game is over, press Enter/Start on the stats screen and you will be kicked back to the `Waiting for host` screen, at which point the process repeats from step 3.
 
+You can join while a match is already running. The screen then says `Match in progress`: you wait in the
+lobby (chat still works) and play from the next match the host starts. The host sees "joined and will play
+from the next match". Dropping straight into the running match isn't supported yet.
+
 ### Co-op missions (2 players)
 
 1. Host: `Network Game` -> `Host Game` -> `Co-Operative Mission`, then pick the mission and difficulty as usual.
