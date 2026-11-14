@@ -21,6 +21,7 @@
 #include "net/net.h"
 #include "game/cheats.h"
 #include "hudext.h"
+#include "texpack.h"
 #include "game/propsnd.h"
 #include "lib/snd.h"
 
@@ -191,6 +192,8 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Audio.Headphones3D", &g_SndHrtf, 0, 1);
 	configRegisterInt("Game.GEMuzzleFlashes", &g_BgunGeMuzzleFlashes, 0, 1);
 	configRegisterInt("Game.MaxExplosions", &g_MaxExplosions, 6, 96);
+	configRegisterInt("Video.TexturePacks", &g_TexpackEnabled, 0, 1);
+	configRegisterString("Video.TexturePack", g_TexpackName, TEXPACK_MAX_NAME);
 	configRegisterInt("Game.MpAutoRespawn", &g_MpAutoRespawnSecs, 0, 30);
 	configRegisterInt("Game.UnlockAllCheats", &g_CheatsUnlockAll, 0, 1);
 	for (s32 j = 0; j < MAX_LOCAL_PLAYERS; ++j) {

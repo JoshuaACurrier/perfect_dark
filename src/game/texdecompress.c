@@ -11,6 +11,9 @@
 #include "data.h"
 #include "types.h"
 #ifndef PLATFORM_N64
+#include "texpack.h"
+#endif
+#ifndef PLATFORM_N64
 #include "mod.h"
 #include "platform.h"
 #endif
@@ -2377,6 +2380,11 @@ void texLoad(texnum_t *updateword, struct texpool *pool, bool unusedarg)
 				texGetPoolFreeBytes(pool);
 			}
 		}
+
+#ifndef PLATFORM_N64
+		// so the renderer can find a texture pack's image for these texels
+		texpackRegisterTexture(tex->data, tex->texturenum);
+#endif
 
 		*updateword = osVirtualToPhysical(tex->data);
 	}

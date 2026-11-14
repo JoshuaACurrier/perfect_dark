@@ -43,6 +43,7 @@ struct TextureCacheValue {
     uint32_t texture_id;
     uint8_t cms, cmt;
     bool linear_filter;
+    bool replaced; // holds a texture pack's image, which wants mipmaps whatever the game asked for
 
     std::list<struct TextureCacheMapIter>::iterator lru_location;
 };

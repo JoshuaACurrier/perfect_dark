@@ -30,6 +30,7 @@
 #include "gfx_window_manager_api.h"
 #include "gfx_rendering_api.h"
 #include "gfx_screen_config.h"
+#include "texpack.h"
 
 uintptr_t gfxFramebuffer;
 
@@ -904,6 +905,21 @@ static void import_texture(int i, int tile, bool importReplacement) {
         return;
     }
 
+    // an HD texture pack's image for this texture, if there is one
+    if (texpackActive()) {
+        s32 rep_width = 0, rep_height = 0;
+        u8 *rep = texpackLoadReplacement(orig_addr, &rep_width, &rep_height);
+        if (rep) {
+            gfx_rapi->upload_texture(rep, rep_width, rep_height, true);
+            texpackFreeReplacement(rep);
+            if (rendering_state.textures[i]) {
+                rendering_state.textures[i]->second.replaced = true;
+                gfx_rapi->set_sampler_parameters(i, false, 0, 0, true);
+            }
+            return;
+        }
+    }
+
     if (fmt == G_IM_FMT_RGBA) {
         if (siz == G_IM_SIZ_16b) {
             import_texture_rgba16(tile, loaded_texture, rdp.tex_lod);
@@ -1404,7 +1420,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                 if (linear_filter != rendering_state.textures[i]->second.linear_filter ||
                     cms != rendering_state.textures[i]->second.cms || cmt != rendering_state.textures[i]->second.cmt) {
                     gfx_flush();
-                    gfx_rapi->set_sampler_parameters(i, linear_filter, cms, cmt, rdp.tex_lod);
+                    gfx_rapi->set_sampler_parameters(i, linear_filter, cms, cmt, rdp.tex_lod || rendering_state.textures[i]->second.replaced);
                     rendering_state.textures[i]->second.linear_filter = linear_filter;
                     rendering_state.textures[i]->second.cms = cms;
                     rendering_state.textures[i]->second.cmt = cmt;
