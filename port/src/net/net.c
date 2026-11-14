@@ -49,6 +49,7 @@ s32 g_NetServerInfoQuery = true;
 // first; the local save file is not changed
 s32 g_NetUnlockAll = true;
 s32 g_NetJoinedMidMatch = false;
+u8 g_NetCurMsgId = 0; // message being read, for log lines
 
 u32 g_NetClientUpdateRate = 1;
 u32 g_NetClientInRate = 128 * 1024;
@@ -303,6 +304,7 @@ static inline void netClientReadConfig(struct netclient *cl, const s32 playernum
 	cl->settings.headnum = g_PlayerConfigsArray[playernum].base.mpheadnum;
 	cl->settings.fovy = g_PlayerExtCfg[playernum].fovy;
 	cl->settings.fovzoommult = g_PlayerExtCfg[playernum].fovzoommult;
+	cl->settings.autoequip = g_PlayerExtCfg[playernum].autoequip;
 	memcpy(cl->settings.name, g_PlayerConfigsArray[playernum].base.name, sizeof(cl->settings.name));
 	// the \n will be readded in the playerconfig
 	char *newline = strrchr(g_NetLocalClient->settings.name, '\n');
@@ -770,6 +772,7 @@ static void netClientEvReceive(struct netclient *cl)
 
 	while (!rc && netbufReadLeft(&cl->in) > 0) {
 		msgid = netbufReadU8(&cl->in);
+		g_NetCurMsgId = msgid;
 		switch (msgid) {
 			case SVC_NOP: rc = 0; break;
 			case SVC_AUTH: rc = netmsgSvcAuthRead(&cl->in, cl); break;

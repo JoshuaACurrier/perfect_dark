@@ -181,7 +181,7 @@ static void netAutoStartMatch(void)
 		g_MpSetup.scenario = g_NetAutoScenario;
 	}
 
-	if (g_NetAutoSims >= 0) {
+	if (g_NetAutoSims >= 0 && g_NetAutoStarted <= 1) { // later rounds keep the host's setup
 		g_MpSetup.chrslots &= MP_PLAYERSLOTS_MASK;
 		const s32 profile = (g_NetAutoSimDiff >= 0 && g_NetAutoSimDiff < NUM_BOTDIFFS) ? g_NetAutoSimDiff : BOTDIFF_NORMAL;
 		for (s32 i = 0; i < g_NetAutoSims; ++i) {

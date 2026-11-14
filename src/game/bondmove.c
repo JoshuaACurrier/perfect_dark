@@ -147,8 +147,17 @@ static inline void bmoveProcessRemoteInput(const bool allowc1buttons)
 
 	// the other side started a jump; do the same jump here so our vertical
 	// movement (which doesn't come from their position) matches
-	if (!handled && (inmove->ucmd & UCMD_JUMP) && !(inmoveprev->ucmd & UCMD_JUMP) && !pl->jumping) {
-		pl->jumprequest = true;
+	if (pl->client->jumppending) {
+		pl->client->jumppending = 0;
+		if (!pl->jumping) {
+			pl->jumprequest = true;
+		}
+	}
+
+	// the client fell into a pit or onto a death floor on its own screen (UCMD_ENVDEATH);
+	// the host doesn't run those deaths for remote players, see bwalkEnvDeath
+	if ((inmove->ucmd & UCMD_ENVDEATH) && !pl->isdead && pl->prop && pl->prop->chr) {
+		playerDie(true);
 	}
 
 	pl->speedtheta = 0.f; // TODO: figure out if anglespeed is even required
@@ -481,6 +490,13 @@ void bmoveApplyMoveData(struct movedata *data)
 	// record some inputs if this is a local player
 	if (g_NetMode && !g_Vars.currentplayer->isremote) {
 		g_Vars.currentplayer->ucmd = 0;
+		if (g_Vars.currentplayer->isdead) {
+			// the host has registered the death
+			g_Vars.currentplayer->netenvdeath = false;
+		} else if (g_Vars.currentplayer->netenvdeath) {
+			// keep telling the host until it does
+			g_Vars.currentplayer->ucmd |= UCMD_ENVDEATH;
+		}
 		if (g_Vars.currentplayer->isdead) {
 			if (g_NetMode == NETMODE_CLIENT) {
 				if (joyGetButtons(optionsGetContpadNum1(g_Vars.currentplayerstats->mpindex), 0xb000)) {

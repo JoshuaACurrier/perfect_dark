@@ -224,7 +224,14 @@ void menuTick(void)
 #ifndef PLATFORM_N64
 				if (g_NetMode) {
 					g_Vars.mpsetupmenu = MPSETUPMENU_ADVSETUP;
-					g_MpSetup.chrslots = 1;
+					// only the host's own player slot (the others are remote players, re-added
+					// below as they're connected); keep the simulants the host set up, unless
+					// Quick Team made them, since it adds a fresh set every match
+					if (g_Vars.mpquickteam == MPQUICKTEAM_NONE) {
+						g_MpSetup.chrslots = (g_MpSetup.chrslots & MP_BOTSLOTS_MASK) | 1;
+					} else {
+						g_MpSetup.chrslots = 1;
+					}
 				} else
 #endif
 				if (g_Vars.usingadvsetup) {

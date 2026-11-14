@@ -80,6 +80,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "system.h"
 #endif
 
 void rng2SetSeed(u32 seed);
@@ -7607,7 +7608,7 @@ s32 projectileTick(struct defaultobj *obj, bool *embedded)
 					objFreeProjectile(obj);
 
 #ifndef PLATFORM_N64
-					if (g_NetMode == NETMODE_SERVER && prop->syncid && !g_Vars.normmplayerisrunning) {
+					if (g_NetMode == NETMODE_SERVER && prop->syncid) {
 						// it came to rest; clients simulated the fall themselves and may
 						// have ended up somewhere else (or through the floor)
 						netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
@@ -17313,6 +17314,34 @@ void weaponGetPickupText(char *buffer, s32 weaponnum, bool dual)
 #endif
 }
 
+#ifndef PLATFORM_N64
+/**
+ * PickupAutoEquip option: picking up a gun while holding nothing (Unarmed) switches to it.
+ * Runs on the host for every player (remote ones use their client's setting; the weapon
+ * then reaches the client through SVC_PLAYER_STATS) and on a client for its own player.
+ */
+void weaponAutoEquipOnPickup(s32 weaponnum)
+{
+	bool want;
+
+	if (g_NetMode && g_Vars.currentplayer->isremote) {
+		want = g_Vars.currentplayer->client && g_Vars.currentplayer->client->settings.autoequip;
+	} else {
+		want = PLAYER_EXTCFG().autoequip;
+	}
+
+	if (want && weaponnum > WEAPON_UNARMED
+			&& bgunGetWeaponNum(HAND_RIGHT) == WEAPON_UNARMED
+			&& invHasSingleWeaponIncAllGuns(weaponnum)) {
+		bgunEquipWeapon(weaponnum);
+		if (g_NetMode) {
+			sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: player %d picked up weapon %d while unarmed, equipping it",
+				g_Vars.currentplayernum, weaponnum);
+		}
+	}
+}
+#endif
+
 void currentPlayerQueuePickupWeaponHudmsg(u32 weaponnum, bool dual)
 {
 	char buffer[100] = "";
@@ -17491,6 +17520,12 @@ s32 propPickupByPlayer(struct prop *prop, bool showhudmsg)
 					result = TICKOP_FREE;
 				}
 			}
+
+#ifndef PLATFORM_N64
+			if (count) {
+				weaponAutoEquipOnPickup(weapon->weaponnum);
+			}
+#endif
 
 			if (count == 2
 					&& bgunGetWeaponNum(HAND_RIGHT) == weapon->weaponnum

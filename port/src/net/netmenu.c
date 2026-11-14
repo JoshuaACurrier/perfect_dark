@@ -15,6 +15,7 @@
 #include "config.h"
 #include "mpsetups.h"
 #include "net/net.h"
+#include "system.h"
 
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
@@ -179,7 +180,24 @@ static const char *menutextJoinAddress(struct menuitem *item)
 
 static MenuItemHandlerResult menuhandlerJoining(s32 operation, struct menuitem *item, union handlerdata *data)
 {
-	if (inputKeyPressed(VK_ESCAPE)) {
+	// once connected, ESC has to be held for a second: it's also the key people tap to get
+	// through end screens or to pause, and a tap here used to drop them from the server
+	static u64 escsince = 0;
+
+	if (!inputKeyPressed(VK_ESCAPE)) {
+		escsince = 0;
+		return 0;
+	}
+
+	const u64 now = sysGetMicroseconds();
+	const bool connected = (g_NetMode != NETMODE_NONE && g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_LOBBY);
+
+	if (!escsince) {
+		escsince = now;
+	}
+
+	if (!connected || now - escsince >= 1000000) {
+		escsince = 0;
 		netDisconnect();
 		menuPopDialog();
 	}
@@ -208,7 +226,7 @@ struct menuitem g_NetJoiningMenuItems[] = {
 		MENUITEMTYPE_SELECTABLE,
 		0,
 		MENUITEMFLAG_SELECTABLE_CENTRE | MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"ESC to abort\n",
+		(uintptr_t)"Hold ESC to leave\n",
 		0,
 		menuhandlerJoining,
 	},

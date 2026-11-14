@@ -70,6 +70,11 @@ static inline void sysLogSetPath(const char *fname)
 	} else {
 		snprintf(logPath, sizeof(logPath), "./%s", fname);
 	}
+	// keep the previous run's log, so restarting after a crash or a bad match doesn't lose it
+	char prevPath[sizeof(logPath) + 8];
+	snprintf(prevPath, sizeof(prevPath), "%s.prev", logPath);
+	remove(prevPath);
+	rename(logPath, prevPath);
 	FILE *f = fopen(logPath, "wb");
 	if (!f) {
 		// try home dir

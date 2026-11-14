@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 18
+#define NET_PROTOCOL_VER 19
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -57,9 +57,10 @@
 #define UCMD_EYESSHUT (1 << 9)
 #define UCMD_SECONDARY (1 << 10)
 #define UCMD_JUMP (1 << 11) // set while the player is in the air from a jump
+#define UCMD_ENVDEATH (1 << 12) // client: its player died to a death floor or a fall (the host doesn't run those for remote players)
 #define UCMD_RESPAWN (1 << 27)
 #define UCMD_CHAT (1 << 28)
-#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_JUMP)
+#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_JUMP | UCMD_ENVDEATH)
 #define UCMD_FL_FORCEPOS (1 << 29)
 #define UCMD_FL_FORCEANGLE (1 << 30)
 #define UCMD_FL_FORCEGROUND (1 << 31)
@@ -90,6 +91,7 @@ struct netclient {
 		u8 headnum;
 		u8 bodynum;
 		u8 team;
+		u8 autoequip; // PickupAutoEquip, applied by the host when this client picks up a gun
 		f32 fovy;
 		f32 fovzoommult;
 	} settings;
@@ -104,6 +106,7 @@ struct netclient {
 	u32 outmoveack; // last acked outmove tick
 	u32 forcetick; // tick on which the client's position was forced, or 0 if not forcing
 	u32 lerpticks; // how many ticks we've been lerping the position
+	u8 jumppending; // host: a jump started in a move from this client, not yet applied
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here
@@ -151,6 +154,7 @@ s32 netStartServer(u16 port, s32 maxclients);
 s32 netIsUnlockAll(void);
 s32 netServerHasWaitingClients(void);
 extern s32 g_NetJoinedMidMatch; // client: connected while the host was in a match, waiting for the next one
+extern u8 g_NetCurMsgId;
 s32 netStartClient(const char *addr);
 
 u32 netSend(struct netclient *dstcl, struct netbuf *buf, const s32 reliable, const s32 chan);

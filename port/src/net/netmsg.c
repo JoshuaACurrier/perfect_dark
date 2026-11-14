@@ -148,7 +148,10 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 		}
 	}
 
-	sysLogPrintf(LOG_WARNING, "NET: prop with syncid %u does not exist", syncid);
+	if (g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME) {
+		// (between matches the host can still be sending about the last one)
+		sysLogPrintf(LOG_WARNING, "NET: prop with syncid %u does not exist (message 0x%02x)", syncid, g_NetCurMsgId);
+	}
 	return NULL;
 }
 
@@ -300,6 +303,11 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 				}
 			}
 		}
+		// a jump starts on the move where the bit turns on; catch it here, per packet, since
+		// several moves can arrive in one frame and only the last two are kept
+		if ((newmove.ucmd & UCMD_JUMP) && !(srccl->inmove[0].ucmd & UCMD_JUMP)) {
+			srccl->jumppending = 1;
+		}
 		// make space in the move stack
 		memmove(srccl->inmove + 1, srccl->inmove, sizeof(srccl->inmove) - sizeof(*srccl->inmove));
 		srccl->inmove[0] = newmove;
@@ -318,6 +326,7 @@ u32 netmsgClcSettingsWrite(struct netbuf *dst)
 	netbufWriteF32(dst, g_NetLocalClient->settings.fovy);
 	netbufWriteF32(dst, g_NetLocalClient->settings.fovzoommult);
 	netbufWriteStr(dst, g_NetLocalClient->settings.name);
+	netbufWriteU8(dst, g_NetLocalClient->settings.autoequip);
 	return dst->error;
 }
 
@@ -329,6 +338,7 @@ u32 netmsgClcSettingsRead(struct netbuf *src, struct netclient *srccl)
 	const f32 fovy = netbufReadF32(src);
 	const f32 fovzoommult = netbufReadF32(src);
 	char *name = netbufReadStr(src);
+	const u8 autoequip = netbufReadU8(src);
 
 	if (src->error) {
 		sysLogPrintf(LOG_WARNING, "NET: malformed CLC_SETTINGS from client %u", srccl->id);
@@ -346,6 +356,7 @@ u32 netmsgClcSettingsRead(struct netbuf *src, struct netclient *srccl)
 	srccl->settings.headnum = headnum;
 	srccl->settings.fovy = fovy;
 	srccl->settings.fovzoommult = fovzoommult;
+	srccl->settings.autoequip = autoequip;
 
 	return src->error;
 }
@@ -484,11 +495,18 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 		}
 	}
 
-	// who the fuck is in the game
-	netbufWriteU8(dst, g_NetNumClients);
+	// who the fuck is in the game: everyone past auth (g_NetNumClients also counts peers that
+	// are still connecting or were turned away, and those have no player config yet)
+	u8 numingame = 0;
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		if (g_NetClients[i].state >= CLSTATE_LOBBY && g_NetClients[i].config) {
+			++numingame;
+		}
+	}
+	netbufWriteU8(dst, numingame);
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *ncl = &g_NetClients[i];
-		if (ncl->state) {
+		if (ncl->state >= CLSTATE_LOBBY && ncl->config) {
 			ncl->settings.team = ncl->config->base.team;
 			netbufWriteU8(dst, ncl->id);
 			netbufWriteU8(dst, ncl->playernum);
@@ -1353,6 +1371,8 @@ u32 netmsgSvcPropPickupWrite(struct netbuf *dst, struct netclient *actcl, struct
 	netbufWriteU8(dst, actcl->id);
 	netbufWriteS8(dst, tickop);
 	netbufWritePropPtr(dst, prop);
+	sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: client %u picked up prop %u (type %u, weapon %d)", actcl->id, prop->syncid,
+		prop->type, (prop->type == PROPTYPE_WEAPON && prop->weapon) ? prop->weapon->weaponnum : -1);
 	return dst->error;
 }
 
@@ -1362,6 +1382,9 @@ u32 netmsgSvcPropPickupRead(struct netbuf *src, struct netclient *srccl)
 	const s8 tickop = netbufReadS8(src);
 	struct prop *prop = netbufReadPropPtr(src);
 	if (src->error || !prop || srccl->state < CLSTATE_GAME) {
+		if (!src->error && clid == g_NetLocalClient->id) {
+			sysLogPrintf(LOG_WARNING, "NET: the host gave us a pickup we don't have here");
+		}
 		return src->error;
 	}
 
@@ -1913,17 +1936,37 @@ void netmsgOnPropFree(struct prop *prop)
 		return;
 	}
 	// only loose things in the world; held items go with their holder, and
-	// simulant drops are freed by the same pickup/timeout code on both sides
-	if (!prop->syncid || prop->parent || !prop->obj || g_Vars.normmplayerisrunning) {
+	// (in Combat Sim too: fade-outs and pool reuse happen per machine, so they don't match up)
+	if (!prop->syncid || prop->parent || !prop->obj) {
 		return;
 	}
 	netbufWriteU8(&g_NetMsgRel, SVC_PROP_REMOVE);
 	netbufWritePropPtr(&g_NetMsgRel, prop);
+	netbufWriteU8(&g_NetMsgRel, 0);
+}
+
+// TICKOP_FREE on the host: a player or simulant took it, it faded out, etc. Things that
+// regenerate (Combat Sim weapons and ammo on their pads) go into their regen wait instead.
+// Player pickups are also sent as SVC_PROP_PICKUP first; the client skips the duplicate.
+void netmsgOnPropTickFree(struct prop *prop)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	// (prop->obj is already NULL here when objFree let go of a thing that doesn't regen)
+	if (!prop->syncid || prop->parent
+			|| (prop->type != PROPTYPE_WEAPON && prop->type != PROPTYPE_OBJ)) {
+		return;
+	}
+	netbufWriteU8(&g_NetMsgRel, SVC_PROP_REMOVE);
+	netbufWritePropPtr(&g_NetMsgRel, prop);
+	netbufWriteU8(&g_NetMsgRel, (prop->obj && (prop->obj->hidden2 & OBJH2FLAG_CANREGEN)) ? 1 : 0);
 }
 
 u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 {
 	const u32 syncid = netbufReadU32(src);
+	const u8 regen = netbufReadU8(src);
 
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
@@ -1933,8 +1976,21 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
 		struct prop *prop = &g_Vars.props[i];
 		if (prop->syncid == syncid) {
-			if (prop->obj && !prop->parent) {
-				prop->obj->hidden |= OBJHFLAG_DELETING;
+			struct defaultobj *obj = prop->obj;
+			if (!obj || prop->parent || (obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING))) {
+				// already taken or on its way out here
+				break;
+			}
+			if (regen && (obj->hidden2 & OBJH2FLAG_CANREGEN)) {
+				// same as a pickup on the host: hide it and start the regen wait
+				objFree(obj, false, true);
+				propExecuteTickOperation(prop, TICKOP_FREE);
+			} else if (g_Vars.normmplayerisrunning) {
+				// free it now; OBJHFLAG_DELETING only takes effect when the obj ticks, and
+				// guns lying out of everyone's sight don't
+				objFreePermanently(obj, true);
+			} else {
+				obj->hidden |= OBJHFLAG_DELETING;
 			}
 			break;
 		}

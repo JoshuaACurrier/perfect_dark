@@ -204,6 +204,7 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 		configRegisterInt(strFmt("Game.Player%d.CrosshairHealth", i), &g_PlayerExtCfg[j].crosshairhealth, 0, CROSSHAIR_HEALTH_ON_WHITE);
 		configRegisterInt(strFmt("Game.Player%d.UseKeyReloads", i), &g_PlayerExtCfg[j].usereloads, 0, false);
 		configRegisterInt(strFmt("Game.Player%d.Jump", i), &g_PlayerExtCfg[j].jump, 0, 1);
+		configRegisterInt(strFmt("Game.Player%d.PickupAutoEquip", i), &g_PlayerExtCfg[j].autoequip, 0, 1);
 		configRegisterFloat(strFmt("Game.Player%d.AimSensitivity", i), &g_PlayerExtCfg[j].aimsens, 0.1f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.LookCurve", i), &g_PlayerExtCfg[j].lookcurve, 1.f, 3.f);
 		configRegisterFloat(strFmt("Game.Player%d.AimAssist", i), &g_PlayerExtCfg[j].aimassist, 0.f, 1.f);

@@ -32,11 +32,14 @@ It must be the US version, revision 1.1 ("NTSC Final"). Both players need the
 same build of this game ($HASH) and the same ROM version.
 EOF
 
+printf '@echo off\r\ncd /d "%%~dp0"\r\nstart "" pd.x86_64.exe --log %%*\r\n' > "$STAGE/Play.bat"
+
 cat > "$STAGE/README.txt" <<EOF
 Perfect Dark Online test build $HASH
 
 1. Put your ROM in data/ (see data/PUT-YOUR-ROM-HERE.txt).
-2. Run pd.x86_64.exe.
+2. Run Play.bat (it starts pd.x86_64.exe and writes pd.log next to it).
+   If something goes wrong, send Josh pd.log (and pd.log.prev, the run before).
 3. Pick or create an agent, then choose Network Game from the menu.
    Host Game to host, Join Game to join (type the host's address).
 Alt+Enter toggles fullscreen. ~ opens the console (chat), F9 shows network stats.

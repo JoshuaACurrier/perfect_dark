@@ -12,6 +12,7 @@
 #include "game/options.h"
 #include "game/player.h"
 #include "game/cheats.h"
+#include "net/net.h"
 #include "lib/joy.h"
 #include "video.h"
 #include "input.h"
@@ -1481,6 +1482,20 @@ static MenuItemHandlerResult menuhandlerUseKeyReloads(s32 operation, struct menu
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerAutoEquip(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_PlayerExtCfg[g_ExtMenuPlayer].autoequip;
+	case MENUOP_SET:
+		g_PlayerExtCfg[g_ExtMenuPlayer].autoequip = data->checkbox.value;
+		netClientSettingsChanged();
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerJump(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
@@ -1783,6 +1798,14 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		(uintptr_t)"Jump",
 		0,
 		menuhandlerJump,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Equip Pickups When Unarmed",
+		0,
+		menuhandlerAutoEquip,
 	},
 	{
 		MENUITEMTYPE_SLIDER,

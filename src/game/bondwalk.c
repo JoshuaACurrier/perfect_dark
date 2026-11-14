@@ -4,6 +4,7 @@
 #include "game/bondwalk.h"
 #include "game/cheats.h"
 #include "game/chraction.h"
+#include "game/bg.h"
 #include "game/debug.h"
 #include "game/footstep.h"
 #include "game/game_006900.h"
@@ -39,6 +40,30 @@ static inline void lerpcoord(struct coord *c, const struct coord *a, const struc
 	c->x = lerpf(a->x, b->x, t);
 	c->y = lerpf(a->y, b->y, t);
 	c->z = lerpf(a->z, b->z, t);
+}
+
+/**
+ * Death floors, endless falls and falling out of the level. In net games each player's own
+ * machine decides these: the host's copy of a remote player only approximates where they
+ * are and could drop into a pit the player never went near (and score it as a suicide).
+ * A client reports its own with UCMD_ENVDEATH, which the host turns into the death.
+ */
+static void bwalkEnvDeath(void)
+{
+	struct player *pl = g_Vars.currentplayer;
+
+	if (g_NetMode == NETMODE_SERVER && pl->isremote) {
+		return;
+	}
+
+	if (g_NetMode == NETMODE_CLIENT) {
+		if (!pl->isremote && !pl->isdead) {
+			pl->netenvdeath = true;
+		}
+		return;
+	}
+
+	playerDie(true);
 }
 
 static void bwalkUpdateRemote(void)
@@ -77,8 +102,28 @@ static void bwalkUpdateRemote(void)
 	bwalk0f0c69b8();
 
  	if (forcepos) {
-		// no interpolation, set position and lock the lad in place
-		pl->prop->pos = inmove->pos;
+		// no interpolation, set position and lock the lad in place; also find the rooms and
+		// ground there, or the old ones are used for collision and the copy can fall
+		RoomNum inrooms[21];
+		RoomNum aboverooms[21];
+		RoomNum bestroom = -1;
+		struct coord newpos = inmove->pos;
+		bgFindRoomsByPos(&newpos, inrooms, aboverooms, 20, &bestroom);
+		RoomNum *found = (inrooms[0] != -1) ? inrooms : aboverooms;
+		if (found[0] != -1 && pl->prop->chr) {
+			RoomNum newrooms[8];
+			s32 i;
+			for (i = 0; i < ARRAYCOUNT(newrooms) - 1 && found[i] != -1; ++i) {
+				newrooms[i] = found[i];
+			}
+			newrooms[i] = -1;
+			chrSetPos(pl->prop->chr, &newpos, newrooms, pl->vv_theta, false);
+		} else {
+			pl->prop->pos = inmove->pos;
+		}
+		pl->bdeltapos.y = 0.f;
+		pl->isfalling = false;
+		pl->jumping = false;
 		pl->client->lerpticks = g_NetInterpTicks + 1;
 		cdtype = CDTYPE_PLAYERS; // don't get stuck in the local client
 	} else if (!moveticks) {
@@ -1034,7 +1079,7 @@ void bwalkUpdateVertical(void)
 				&& g_Vars.currentplayer->vv_manground - 20.0f < g_Vars.currentplayer->vv_ground
 				&& g_Vars.currentplayer->onladder == false
 				&& onladder2 == false) {
-			playerDie(true);
+			bwalkEnvDeath();
 		}
 	}
 
@@ -1097,7 +1142,7 @@ void bwalkUpdateVertical(void)
 			} else {
 				if (g_Vars.lvframe60 - g_Vars.currentplayer->fallstart > TICKS(240)) {
 					// Have been falling for 4 seconds
-					playerDie(true);
+					bwalkEnvDeath();
 				}
 			}
 		} else {
@@ -1144,7 +1189,7 @@ void bwalkUpdateVertical(void)
 			}
 
 			if (g_Vars.currentplayer->vv_manground <= -30000) {
-				playerDie(true);
+				bwalkEnvDeath();
 			}
 		}
 	} else {
@@ -1154,7 +1199,7 @@ void bwalkUpdateVertical(void)
 		}
 
 		if (g_Vars.currentplayer->vv_manground <= -30000) {
-			playerDie(true);
+			bwalkEnvDeath();
 		}
 	}
 

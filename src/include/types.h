@@ -2828,6 +2828,7 @@ struct player {
 	/*0x1c8c*/ struct netclient *client;
 	bool jumprequest; // jump button pressed this frame (or a remote player's jump arrived)
 	bool jumping;     // in the air because of a jump
+	bool netenvdeath; // net client: died to a death floor or fall here, the host hasn't confirmed yet
 #endif
 };
 
@@ -6186,6 +6187,7 @@ struct extplayerconfig {
 	s32 crosshairhealth;
 	s32 usereloads;
 	s32 jump; // the Jump button works (not in the original game)
+	s32 autoequip; // picking up a gun while holding Unarmed switches to it (not in the original game)
 	f32 aimsens;   // mouse look speed multiplier while aiming (R / right mouse)
 	f32 lookcurve; // controller look response: stick^lookcurve (2 = the original game)
 	f32 aimassist; // how far auto-aim pulls the crosshair to a target, 0..1 (1 = the original game)

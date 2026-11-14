@@ -73,6 +73,12 @@ don't apply in a network game. As in single player, the "weapons for Jo" cheats 
 * Cloaking device is not synced.
 * Most likely only Combat works properly.
 * Simulants are run by the host; clients see them smoothly but slightly behind the host (about one round trip).
+* The host decides hits on everyone using where it last heard each player was, so a player who has just
+  ducked behind a wall can still be hit for about one round trip (your ping on `F9`).
+* Death floors, long falls and falling out of the level are decided by each player's own game (the host
+  only approximates where remote players are), then reported to the host.
+* For bug reports, start the game with `Play.bat` (in the release zip) or `--log`: it writes `pd.log`, and
+  the previous run is kept as `pd.log.prev`.
 * Bandwidth consumption on the server is pretty large on the default settings, especially with 8 players.
  
 

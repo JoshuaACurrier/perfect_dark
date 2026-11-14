@@ -125,6 +125,8 @@ Controls can be rebound in `Options > Extended > Key Bindings` (actions are list
 
 Jump is not in the original game; turn it off in `Options > Extended > Game > Jump` (`Game.Player1.Jump=0`).
 
+Picking up a gun while holding nothing (Unarmed) switches to it. Turn that off in `Options > Extended > Game > Equip Pickups When Unarmed` (`Game.Player1.PickupAutoEquip=0`).
+
 Aim feel (`Options > Extended > Mouse / Controller`): **Aim Sensitivity** scales mouse look while aiming, **Raw Input** (on by default) bypasses Windows pointer speed and acceleration, **Look Curve** sets the controller look response (Original = the game's squared curve, down to Linear), and **Aim Assist** sets how far auto-aim pulls the crosshair (needs the game's Auto-Aim option on).
 
 ## Building

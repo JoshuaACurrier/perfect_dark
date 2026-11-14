@@ -146,6 +146,7 @@ struct mpweapon g_MpWeapons[NUM_MPWEAPONS] = {
 	.crosshairhealth = CROSSHAIR_HEALTH_OFF, \
 	.usereloads = false, \
 	.jump = true, \
+	.autoequip = true, \
 	.aimsens = 1.f, \
 	.lookcurve = 2.f, \
 	.aimassist = 1.f, \

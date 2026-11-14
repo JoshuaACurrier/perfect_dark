@@ -74,6 +74,7 @@
 #include "platform.h"
 #include "video.h"
 #include "input.h"
+#include "string.h"
 #include "net/net.h"
 #include "net/netmsg.h"
 #endif
@@ -676,6 +677,18 @@ void playerStartNewLife(void)
 	if (g_Vars.currentplayer->prop->chr) {
 		g_Vars.currentplayer->prop->chr->chrflags &= ~CHRCFLAG_HIDDEN;
 	}
+
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_SERVER && g_Vars.currentplayer->isremote && g_Vars.currentplayer->client) {
+		// the host picked the spawn point: put the client there, and forget the moves from its
+		// last life, which would otherwise drag the new copy back to where it died
+		struct netclient *cl = g_Vars.currentplayer->client;
+		memset(cl->inmove, 0, sizeof(cl->inmove));
+		cl->lerpticks = 0;
+		cl->jumppending = 0;
+		g_Vars.currentplayer->ucmd |= UCMD_FL_FORCEPOS | UCMD_FL_FORCEANGLE | UCMD_FL_FORCEGROUND;
+	}
+#endif
 }
 
 void playerLoadDefaults(void)

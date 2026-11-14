@@ -256,6 +256,9 @@ s32 ammocrateGetPickupAmmoQty(struct ammocrateobj *crate);
 s32 weaponGetPickupAmmoQty(struct weaponobj *weapon);
 void weaponGetPickupText(char *buffer, s32 weaponnum, bool dual);
 void currentPlayerQueuePickupWeaponHudmsg(u32 weaponnum, bool dual);
+#ifndef PLATFORM_N64
+void weaponAutoEquipOnPickup(s32 weaponnum);
+#endif
 s32 propPickupByPlayer(struct prop *prop, bool showhudmsg);
 s32 objTestForPickup(struct prop *prop);
 bool func0f0899dc(struct prop *prop, struct coord *arg1, f32 *arg2, f32 *arg3);

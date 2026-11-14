@@ -88,6 +88,7 @@ u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags);
 u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnPropFree(struct prop *prop);
+void netmsgOnPropTickFree(struct prop *prop);
 u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);

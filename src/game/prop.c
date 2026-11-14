@@ -1523,6 +1523,13 @@ void handsTickAttack(void)
 
 void propExecuteTickOperation(struct prop *prop, s32 op)
 {
+#ifndef PLATFORM_N64
+	if (op == TICKOP_FREE) {
+		// tell clients about loose things the host got rid of (simulant pickups, fade-outs...)
+		netmsgOnPropTickFree(prop);
+	}
+#endif
+
 	if (op == TICKOP_FREE) {
 		if ((prop->type == PROPTYPE_WEAPON || prop->type == PROPTYPE_OBJ)
 				&& prop->obj && (prop->obj->hidden2 & OBJH2FLAG_CANREGEN)) {

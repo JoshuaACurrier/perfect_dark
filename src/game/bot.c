@@ -31,6 +31,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netchr.h"
+#include "net/netmsg.h"
 #endif
 #include "lib/rng.h"
 #include "lib/mtx.h"
@@ -1289,6 +1290,16 @@ void botDisarm(struct chrdata *chr, struct prop *attackerprop)
 			chr->weapons_held[HAND_LEFT] = NULL;
 		}
 
+#ifndef PLATFORM_N64
+		if (g_NetMode == NETMODE_CLIENT) {
+			// the host drops the real gun and sends it (below); the one in our puppet's hand is
+			// only a local stand-in, which can't be picked up
+			if (chr->weapons_held[HAND_RIGHT]) {
+				chr->weapons_held[HAND_RIGHT]->obj->hidden |= OBJHFLAG_DELETING;
+				chr->weapons_held[HAND_RIGHT] = NULL;
+			}
+		} else
+#endif
 		if (chr->weapons_held[HAND_RIGHT]) {
 			prop = chr->weapons_held[HAND_RIGHT];
 			weaponSetGunfireVisible(prop, false, -1);
@@ -1310,6 +1321,17 @@ void botDisarm(struct chrdata *chr, struct prop *attackerprop)
 				obj->projectile->pickuptimer240 = TICKS(240);
 				obj->projectile->pickupby = attackerprop;
 			}
+
+#ifndef PLATFORM_N64
+			if (g_NetMode == NETMODE_SERVER) {
+				// drop it now and send it, like botinvDrop does on death; clients don't have
+				// this gun (their puppet held a stand-in), so it has to be created there
+				chr->hidden &= ~CHRHFLAG_DROPPINGITEM;
+				objDrop(prop, true);
+				netmsgSvcPropSpawnWrite(&g_NetMsgRel, prop);
+				netmsgSvcPropMoveWrite(&g_NetMsgRel, prop, NULL);
+			}
+#endif
 		}
 
 		botinvRemoveItem(chr, chr->aibot->weaponnum);
