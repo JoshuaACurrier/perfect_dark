@@ -9,6 +9,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `smooth.py` | How smoothly chrs move in a `--net-dump` file (dump with `--net-dump-interval 1`): speed spikes, back-and-forth jitter and distance travelled. Run it on the host's dump and a client's; the client's should look like the host's. |
 | `imgdiff.py` | Compares two screenshots of the same view (brightness, difference, a grid of what got brighter or darker), for checking what a video option changed. No image library needed. |
 | `desync.py` | Compares two `--net-dump` files (host vs client): how far apart every chr and loose gun is, plus props that only the client has or that vanished on one side. |
+| `audiocheck.py` | Checks captured audio for a glitch that repeats every mixer block (184 frames). Capture with `PD_AUDIO_CAPTURE=1 nettest.sh -s ...`, which writes `<name>/audio.raw` instead of playing; a clean capture's worst position is about 1.1x the median, a broken one was 18x. |
 | `winshot.ps1` | Screenshots each game window (not the desktop); skips hung windows. |
 | `sendkey.ps1` | Sends a key press to the game windows without focusing them. |
 | `gdbhost.sh` | Runs the host under gdb with a client connecting, and prints the backtrace if it crashes. |

@@ -202,7 +202,6 @@ void aInterleaveImpl(void) {
     int count = ROUND_UP_16(NUM_SAMPLES) / 8;
     int16_t *d = BUF_S16(OFS_BASE);
     int16_t *const dstart = d;
-    const int nframes = count * 8;
     while (count > 0) {
         int16_t l0 = *l++;
         int16_t l1 = *l++;
@@ -238,7 +237,9 @@ void aInterleaveImpl(void) {
         *d++ = r7;
         --count;
     }
-    mixerFinalLevel(dstart, nframes);
+    // only NUM_SAMPLES frames are real and get saved (the loop above rounds up to 16).
+    // The limiter keeps a delay line, so it must see exactly the frames that are played.
+    mixerFinalLevel(dstart, NUM_SAMPLES);
 }
 
 void aDMEMMoveImpl(uint16_t in_addr, uint16_t out_addr, int nbytes) {
