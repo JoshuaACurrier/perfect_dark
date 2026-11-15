@@ -19,6 +19,13 @@
 //   --net-autoalarm SECS     (host) alarm and a 60 s countdown on at SECS, both off at 2*SECS
 //   --net-cheats MASK        (host) turn on these cheats (bit = CHEAT_* number; 64-bit, e.g. 0x4 invincible)
 //   --net-autopilot [SEED]   drive the local player with scripted input
+//   --net-aimtest            (host) everyone spawns with a CMP150 and there is no score limit; with
+//                            --net-sims 0 and --net-autopilot the host walks up to the other player and
+//                            strafes in front of them. (client, with --net-autopilot) keep the sights on the
+//                            nearest character in sight, as drawn, and hold fire. At --net-autoquit the host
+//                            logs how far the client's aim line was from its target at several rewinds.
+//   --net-nolagcomp          (host) turn lag compensation off for this run
+//   --net-lagbias TICKS      (host) rewind TICKS 60ths more (or less, if negative) than measured
 //   --net-dump FILE          write chr state to FILE every --net-dump-interval ticks (default 10)
 //   --net-lag MS             delay every outgoing packet by MS milliseconds
 //   --net-jitter MS          add up to MS milliseconds of random extra delay
@@ -27,15 +34,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "platform.h"
 #include "net/netenet.h"
 #include "net/net.h"
 #include "net/netauto.h"
+#include "net/netlag.h"
 #include "types.h"
 #include "constants.h"
 #include "data.h"
 #include "bss.h"
 #include "game/chraction.h"
+#include "game/propsnd.h"
 #include "game/menu.h"
 #include "game/propobj.h"
 #include "game/pdmode.h"
@@ -63,6 +73,7 @@ static s32 g_NetAutoStage = -1;
 static s32 g_NetAutoSims = -1;
 static s32 g_NetAutoSimDiff = BOTDIFF_NORMAL;
 static s32 g_NetAutoScenario = -1;
+static s32 g_NetAutoAimTest = 0;
 static s32 g_NetAutoCoopStage = -1;
 static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
@@ -108,6 +119,12 @@ void netAutoInit(void)
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
 	g_NetAutoHudTest = sysArgCheck("--net-hudtest");
 	g_NetAutoTeams = sysArgCheck("--net-teams");
+	g_NetAutoAimTest = sysArgCheck("--net-aimtest");
+	g_NetLagMeasure = g_NetAutoAimTest;
+	if (sysArgCheck("--net-nolagcomp")) {
+		g_NetLagComp = 0;
+	}
+	g_NetLagBias = (f32)sysArgGetInt("--net-lagbias", 0);
 	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
 	const char *cheats = sysArgGetString("--net-cheats");
 	g_NetAutoCheats = (cheats && cheats[0]) ? strtoull(cheats, NULL, 0) : 0;
@@ -196,6 +213,13 @@ static void netAutoStartMatch(void)
 
 	if (g_NetAutoScenario >= 0) {
 		g_MpSetup.scenario = g_NetAutoScenario;
+	}
+
+	if (g_NetAutoAimTest) {
+		g_MpSetup.options |= MPOPTION_SPAWNWITHWEAPON;
+		g_MpSetup.weapons[0] = MPWEAPON_CMP150;
+		g_MpSetup.scorelimit = 100; // none: the test player would end the match early
+		g_MpSetup.teamscorelimit = 400;
 	}
 
 	if (g_NetAutoSims >= 0 && g_NetAutoStarted <= 1) { // later rounds keep the host's setup
@@ -340,6 +364,29 @@ static void netAutoTickQuit(void)
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
 		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
+		if (g_NetMode == NETMODE_SERVER) {
+			sysLogPrintf(LOG_NOTE, "NET: remote players' shots: firing in %u frames, %u hits (%.1f per 100 frames), lag compensation %s",
+				g_NetLagFireFrames, g_NetLagHits, g_NetLagFireFrames ? 100.f * g_NetLagHits / g_NetLagFireFrames : 0.f,
+				g_NetLagComp ? "on" : "off");
+			if (g_NetLagMeasureCount) {
+				char line[256];
+				size_t len = 0;
+				for (s32 k = 0; k < NETLAG_MEASURE_NUM; ++k) {
+					len += snprintf(line + len, sizeof(line) - len, " %+.0f:%.1f", g_NetLagMeasureOfs[k], g_NetLagMeasureSum[k] / g_NetLagMeasureCount);
+				}
+				sysLogPrintf(LOG_NOTE, "NET: aim line to target, %u shots: %.1f units with no rewind; by ticks added to our rewind:%s",
+					g_NetLagMeasureCount, g_NetLagMeasureNowSum / g_NetLagMeasureCount, line);
+			}
+			sysLogPrintf(LOG_NOTE, "NET: lag compensation: %u frames with remote shots, %u targets moved back, by %.0f ms and %.1f units on average",
+				g_NetLagShotFrames, g_NetLagMovedTargets,
+				g_NetLagMovedTargets ? g_NetLagRewindSum / g_NetLagMovedTargets * (1000.f / 60.f) : 0.f,
+				g_NetLagMovedTargets ? g_NetLagShiftSum / g_NetLagMovedTargets : 0.f);
+		}
+		for (s32 i = 0; i < g_NetMaxClients; ++i) {
+			if (g_NetClients[i].state >= CLSTATE_GAME && g_NetClients[i].id != 0) {
+				sysLogPrintf(LOG_NOTE, "NET: client %u ping %u ms, loss %u%%", g_NetClients[i].id, g_NetClients[i].ping, g_NetClients[i].loss);
+			}
+		}
 		sysLogPrintf(LOG_NOTE, "NET: muffling: %u line-of-sight tests, %u found the sound out of sight; %u voice blocks low passed",
 			g_PsOcclusionTests, g_PsOccludedTests, g_MixerMuffledBlocks);
 		sysLogPrintf(LOG_NOTE, "NET: final mix: %u samples out, limiter turned down %u, still clipped %u",
@@ -573,6 +620,77 @@ s32 netAutopilotRead(s32 idx, OSContPad *pad)
 
 	if (firing) {
 		pad->button |= Z_TRIG;
+	}
+
+	if (g_NetAutoAimTest && g_NetMode == NETMODE_SERVER && g_NetAutoSims == 0) {
+		// no simulants: be the moving target. Walk up to the other player, then strafe in front of them
+		struct player *pl = g_Vars.players[0];
+		struct player *other = PLAYERCOUNT() > 1 ? g_Vars.players[1] : NULL;
+		if (pl && pl->prop && other && other->prop) {
+			const f32 dx = other->prop->pos.x - pl->prop->pos.x;
+			const f32 dz = other->prop->pos.z - pl->prop->pos.z;
+			f32 theta = 360.f - atan2f(dx, dz) * (180.f / 3.14159265f);
+			while (theta >= 360.f) theta -= 360.f;
+			while (theta < 0.f) theta += 360.f;
+			pl->vv_theta = theta;
+			pl->vv_verta = 0.f;
+			pad->stick_x = 0;
+			pad->button &= ~(R_CBUTTONS | L_CBUTTONS | Z_TRIG);
+			if (dx * dx + dz * dz > 600.f * 600.f) {
+				pad->stick_y = 100;
+			} else {
+				pad->stick_y = 0;
+				pad->button |= ((g_NetTick / 50) & 1) ? R_CBUTTONS : L_CBUTTONS;
+			}
+		}
+	}
+
+	if (g_NetAutoAimTest && g_NetMode == NETMODE_CLIENT) {
+		// wander until a character is in sight; then stand, strafe a little, and keep the
+		// sights on it where it is drawn
+		struct player *pl = g_Vars.players[0];
+		// (let go now and then: the game waits for a release after a respawn)
+		if ((g_NetTick % 90) >= 4) {
+			pad->button |= Z_TRIG;
+		} else {
+			pad->button &= ~Z_TRIG;
+		}
+
+		if (pl && pl->prop) {
+			struct chrdata *best = NULL;
+			f32 bestdist = 2500.f * 2500.f;
+			for (s32 i = 0; i < g_NumChrSlots; ++i) {
+				struct chrdata *chr = &g_ChrSlots[i];
+				if (chr->chrnum < 0 || !chr->prop || !chr->model || chr->prop == pl->prop
+						|| chrIsDead(chr) || chr->actiontype == ACT_DIE || chr->actiontype == ACT_DEAD) {
+					continue;
+				}
+				const f32 dx = chr->prop->pos.x - pl->cam_pos.x;
+				const f32 dy = chr->prop->pos.y - pl->cam_pos.y;
+				const f32 dz = chr->prop->pos.z - pl->cam_pos.z;
+				const f32 dist = dx * dx + dy * dy + dz * dz;
+				if (dist < bestdist && dist > 150.f * 150.f && psGetOcclusion(&chr->prop->pos, chr->prop->rooms) == 0.f) {
+					best = chr;
+					bestdist = dist;
+				}
+			}
+			if (!best) {
+				pl->vv_verta = 0.f; // look level while wandering
+			} else {
+				pad->stick_x = 0;
+				pad->stick_y = 0;
+				pad->button &= ~(R_CBUTTONS | L_CBUTTONS);
+				pad->button |= ((g_NetTick / 45) & 1) ? R_CBUTTONS : L_CBUTTONS;
+				const f32 dx = best->prop->pos.x - pl->cam_pos.x;
+				const f32 dy = best->prop->pos.y - pl->cam_pos.y;
+				const f32 dz = best->prop->pos.z - pl->cam_pos.z;
+				f32 theta = 360.f - atan2f(dx, dz) * (180.f / 3.14159265f);
+				while (theta >= 360.f) theta -= 360.f;
+				while (theta < 0.f) theta += 360.f;
+				pl->vv_theta = theta;
+				pl->vv_verta = atan2f(dy, sqrtf(dx * dx + dz * dz)) * (180.f / 3.14159265f);
+			}
+		}
 	}
 
 	// open doors and respawn

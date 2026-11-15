@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 20
+#define NET_PROTOCOL_VER 21
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -107,6 +107,13 @@ struct netclient {
 	u32 forcetick; // tick on which the client's position was forced, or 0 if not forcing
 	u32 lerpticks; // how many ticks we've been lerping the position
 	u8 jumppending; // host: a jump started in a move from this client, not yet applied
+
+	// lag compensation and the ping readout (netlag.c)
+	f32 lagticks; // host: how old this client's view of us is when its input gets here, in 60ths (smoothed)
+	f32 chrdelay; // host: how far behind that it shows guards and simulants, in 60ths
+	u8 laginit; // host: lagticks has a first sample
+	u16 ping; // everyone: round trip in ms, as the host measures it (0 for the host)
+	u8 loss; // everyone: packets lost on the way to this client, percent
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here

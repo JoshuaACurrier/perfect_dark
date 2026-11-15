@@ -9,6 +9,12 @@ struct netclient;
 // (re)allocates per-chr net state; call after the chrs for a stage have been set up
 void netchrReset(void);
 
+// the stage clock and the client's view of the server's (for lag compensation, netlag.c)
+f32 netchrClock(void);
+f32 netchrClientNewestTime(void);
+f32 netchrClientDisplayDelay(void);
+u8 netchrClientLoss(void);
+
 // server: sends chr snapshots for this frame
 void netchrServerSend(void);
 

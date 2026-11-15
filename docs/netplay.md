@@ -65,6 +65,19 @@ one round trip after the shot. Footsteps (yours, other players', guards' and sim
 games, from where they are; the original only plays them with one player, since split screen players
 share the speakers.
 
+### Lag compensation and ping
+
+Your shots are tested by the host against where the other players, simulants and guards were on
+your screen when you fired, so you aim at what you see instead of ahead of it. The host keeps about a
+second of positions for this and goes back at most `Net.Server.LagCompensationMaxMs` (300); set
+`Net.Server.LagCompensation=0` on the host to turn it off. The other side of it: a player with a high
+ping can still hit you a moment after you got behind cover on your own screen.
+
+`Show Ping` (Extended options, `Net.ShowPing`) puts your ping at the top right, with packet loss when
+there is any; the host sees every player's. The ping is measured inside the game, from the host
+sending a snapshot to your input for it arriving back, so it is a frame or two higher than what a
+network tool would show. Loss is the share of the host's snapshots that never reached you.
+
 ### Misc
 
 * Everyone has to have the same ROM. The game only compares the file name, but different regions in one game will definitely break everything.

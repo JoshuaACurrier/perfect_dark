@@ -36,6 +36,7 @@
 #define SVC_MP_KILL       0x60 // someone killed someone (combat sim)
 #define SVC_MP_SCORES     0x61 // the whole scoreboard (sent when it changes)
 #define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)
+#define SVC_NETINFO       0x63 // everyone's ping and packet loss
 
 #define CLC_BAD      0x00 // trash
 #define CLC_NOP      0x01 // does nothing
@@ -61,6 +62,8 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst);
 u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcStageEndWrite(struct netbuf *dst);
 u32 netmsgSvcStageEndRead(struct netbuf *src, struct netclient *srccl);
+u32 netmsgSvcNetInfoWrite(struct netbuf *dst);
+u32 netmsgSvcNetInfoRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcPlayerMoveWrite(struct netbuf *dst, struct netclient *movecl);
 u32 netmsgSvcPlayerMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcPlayerStatsWrite(struct netbuf *dst, struct netclient *actcl);

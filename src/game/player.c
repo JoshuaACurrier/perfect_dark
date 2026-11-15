@@ -79,6 +79,7 @@
 #include "system.h"
 #include "hudext.h"
 #include "net/netmsg.h"
+#include "net/netlag.h"
 #endif
 
 s32 g_DefaultWeapons[2];
@@ -4973,6 +4974,7 @@ Gfx *playerRenderHud(Gfx *gdl)
 #ifndef PLATFORM_N64
 		gdl = hudextDrawTeamNames(gdl);
 		gdl = hudextDrawDeath(gdl);
+		gdl = netlagDrawPing(gdl);
 #endif
 		gdl = bgunDrawSight(gdl);
 

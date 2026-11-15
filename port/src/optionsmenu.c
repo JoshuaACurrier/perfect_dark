@@ -13,6 +13,7 @@
 #include "game/player.h"
 #include "game/cheats.h"
 #include "net/net.h"
+#include "net/netlag.h"
 #include "hudext.h"
 #include "texpack.h"
 #include "game/propsnd.h"
@@ -1698,6 +1699,19 @@ static MenuItemHandlerResult menuhandlerKillSound(s32 operation, struct menuitem
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerShowPing(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_NetShowPing;
+	case MENUOP_SET:
+		g_NetShowPing = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerTeamNames(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
@@ -2045,6 +2059,14 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		(uintptr_t)"Teammate Names",
 		0,
 		menuhandlerTeamNames,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Show Ping (Network Games)",
+		0,
+		menuhandlerShowPing,
 	},
 	{
 		MENUITEMTYPE_SLIDER,

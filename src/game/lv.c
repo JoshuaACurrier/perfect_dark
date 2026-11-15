@@ -99,6 +99,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "net/netlag.h"
 #include "video.h"
 #endif
 
@@ -1266,7 +1267,14 @@ Gfx *lvRender(Gfx *gdl)
 				scenarioTickChr(NULL);
 				propsSort();
 				autoaimTick();
+#ifndef PLATFORM_N64
+				// a remote player's shots are tested against where things were on their screen
+				netlagBeginShots();
 				handsTickAttack();
+				netlagEndShots();
+#else
+				handsTickAttack();
+#endif
 
 #ifndef PLATFORM_N64
 				// glares calculated earlier on PC, before prop matrices turn into garbage

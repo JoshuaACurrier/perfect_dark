@@ -10,6 +10,7 @@
 #include "net/netmsg.h"
 #include "net/netauto.h"
 #include "net/netchr.h"
+#include "net/netlag.h"
 #include "net/netcoop.h"
 #include "types.h"
 #include "constants.h"
@@ -803,6 +804,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_MP_KILL: rc = netmsgSvcMpKillRead(&cl->in, cl); break;
 			case SVC_MP_SCORES: rc = netmsgSvcMpScoresRead(&cl->in, cl); break;
 			case SVC_HITMARK: rc = netmsgSvcHitmarkRead(&cl->in, cl); break;
+			case SVC_NETINFO: rc = netmsgSvcNetInfoRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -943,6 +945,7 @@ void netEndFrame(void)
 			if (g_NetNextUpdate <= g_NetTick) {
 				// chr snapshots go out at the same rate as player updates
 				netchrServerSend();
+				netlagServerTick();
 				netcoopServerTick();
 				netmsgMpScoresTick();
 				g_NetNextUpdate = g_NetTick + g_NetServerUpdateRate;
@@ -1094,6 +1097,7 @@ void netSyncIdsAllocate(void)
 
 	// chr and mission state is per stage
 	netchrReset();
+	netlagReset();
 	netcoopReset();
 
 	// don't allocate anything else if we're in lobby
@@ -1227,4 +1231,7 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterUInt("Net.Server.UpdateFrames", &g_NetServerUpdateRate, 0, 60);
 	configRegisterInt("Net.Server.AllowInfoQuery", &g_NetServerInfoQuery, 0, 1);
 	configRegisterInt("Net.UnlockAll", &g_NetUnlockAll, 0, 1);
+	configRegisterInt("Net.Server.LagCompensation", &g_NetLagComp, 0, 1);
+	configRegisterInt("Net.Server.LagCompensationMaxMs", &g_NetLagCompMaxMs, 0, 1000);
+	configRegisterInt("Net.ShowPing", &g_NetShowPing, 0, 1);
 }

@@ -131,6 +131,7 @@ Also in `Options > Extended > Game`, all on by default and not in the original g
 * **Hit Markers**: an X over the crosshair when your shot hits someone (red when it kills) (`Game.Player1.HitMarkers`).
 * **Kill Sound**: a short tone when you kill someone (`Game.Player1.KillSound`).
 * **Teammate Names**: in team games and co-op, your teammates' names show over their heads, even through walls (`Game.Player1.TeamNames`).
+* **Show Ping (Network Games)**: your ping, and packet loss when there is any, at the top right; the host sees every player's (`Net.ShowPing`).
 
 In Combat Simulator the death screen says who killed you and counts down to an automatic respawn
 (`Options > Extended > Auto Respawn`, `Game.MpAutoRespawn`, seconds, 0 = off; pressing fire still respawns as soon as the screen fades).

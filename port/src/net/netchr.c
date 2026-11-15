@@ -115,6 +115,11 @@ static s32 g_NetChrsNum = 0;
 static u8 *g_NetChrLives = NULL;
 static u32 g_NetChrSendCursor = 0;
 static f32 g_NetChrLastSend = -1000.f;
+static u8 g_NetChrRound = 0;        // server: number of the snapshot round, so clients can count missed ones
+static u8 g_NetChrLastRound = 0;    // client: last round seen
+static u32 g_NetChrRoundsDue = 0;   // client: rounds that should have come in this window
+static u32 g_NetChrRoundsGot = 0;   // client: rounds that did
+static u8 g_NetChrLoss = 0;         // client: percent of rounds missed over the last window
 
 // both: our clock for this stage
 static u64 g_NetChrEpoch = 0;
@@ -159,6 +164,9 @@ void netchrReset(void)
 	g_NetChrLastSend = -1000.f;
 	g_NetChrEpoch = sysGetMicroseconds();
 	g_NetChrSynced = false;
+	g_NetChrRoundsDue = 0;
+	g_NetChrRoundsGot = 0;
+	g_NetChrLoss = 0;
 	g_NetChrRenderTick = 0;
 	g_NetChrNextLog = 0.f;
 
@@ -437,6 +445,7 @@ void netchrServerSend(void)
 		return;
 	}
 	g_NetChrLastSend = now;
+	++g_NetChrRound;
 
 	// worst case size of one chr entry
 	const u32 maxentry = 2 + 1 + 1 + 1 + 12 + 4 + 2 + 2 + 2 * 8 + 2 + 4 + 4 + 4 + 4 + 2 + 8;
@@ -448,6 +457,7 @@ void netchrServerSend(void)
 		netbufStartWrite(&g_NetChrBuf);
 		netbufWriteU8(&g_NetChrBuf, SVC_CHR_MOVE);
 		netbufWriteF32(&g_NetChrBuf, now);
+		netbufWriteU8(&g_NetChrBuf, g_NetChrRound);
 		const u32 countpos = g_NetChrBuf.wp;
 		netbufWriteU8(&g_NetChrBuf, 0);
 		u8 count = 0;
@@ -462,14 +472,47 @@ void netchrServerSend(void)
 			}
 		}
 
-		if (!count) {
+		if (!count && packetsleft < 4) {
 			break;
 		}
 
+		// (the first packet of a round goes out even when it is empty: its time stamp keeps
+		// the clients' idea of our clock going, which lag compensation needs; see netlag.c)
 		g_NetChrBuf.data[countpos] = count;
 		netSend(NULL, &g_NetChrBuf, false, NETCHAN_DEFAULT);
 		--packetsleft;
+
+		if (!count) {
+			break;
+		}
 	}
+}
+
+// this stage's clock, in 60ths of a second (the server's is the one in the snapshots)
+f32 netchrClock(void)
+{
+	return netchrNow();
+}
+
+// client: the server time of the newest thing we can have heard about by now, or -1
+f32 netchrClientNewestTime(void)
+{
+	return g_NetChrSynced ? netchrNow() + g_NetChrOffset : -1.f;
+}
+
+// client: percent of the server's snapshot rounds that never arrived, lately
+u8 netchrClientLoss(void)
+{
+	return g_NetChrLoss;
+}
+
+// client: how far behind that chrs are shown right now, in 60ths
+f32 netchrClientDisplayDelay(void)
+{
+	if (!g_NetChrSynced) {
+		return 0.f;
+	}
+	return netchrClampf(g_NetChrOffset - g_NetChrRenderOfs, 0.f, NETCHR_DELAY_MAX + 2.f);
 }
 
 // client: a snapshot packet stamped srvtime arrived now; update our idea of the server clock
@@ -559,9 +602,26 @@ static f32 netchrRenderTime(void)
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl)
 {
 	const f32 srvtime = netbufReadF32(src);
+	const u8 round = netbufReadU8(src);
 	const u8 count = netbufReadU8(src);
 
 	if (!src->error && srccl->state >= CLSTATE_GAME && srvtime == srvtime) {
+		if (g_NetChrSynced) {
+			// count the rounds that never arrived (a round can be several packets; one is enough)
+			const u8 gap = (u8)(round - g_NetChrLastRound);
+			if (gap > 0 && gap < 128) {
+				g_NetChrRoundsDue += gap;
+				++g_NetChrRoundsGot;
+				if (g_NetChrRoundsDue >= 120) {
+					g_NetChrLoss = (u8)((g_NetChrRoundsDue - g_NetChrRoundsGot) * 100 / g_NetChrRoundsDue);
+					g_NetChrRoundsDue = 0;
+					g_NetChrRoundsGot = 0;
+				}
+				g_NetChrLastRound = round;
+			}
+		} else {
+			g_NetChrLastRound = round;
+		}
 		netchrClientClockSample(srvtime);
 	}
 

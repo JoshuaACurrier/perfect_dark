@@ -66,7 +66,7 @@ launch() {
 	rm -f "$PD_OUT/$name/pd.log"
 	# PD_AUDIO_CAPTURE=1 (with -s): write what each copy would play to <name>/audio.raw
 	# (16-bit stereo, 22020 Hz) instead of the speakers; check it with audiocheck.py
-	if [ -n "$PD_AUDIO_CAPTURE" ]; then
+	if [ -n "${PD_AUDIO_CAPTURE:-}" ]; then
 		export SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE="$OUT_W/$name/audio.raw"
 	fi
 	"$PD_EXE" --basedir "$DATA_W" --savedir "$OUT_W/$name" --logfile "$OUT_W/$name/pd.log" \

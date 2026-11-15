@@ -953,6 +953,12 @@ static inline void inputUpdateMouse(void)
 		mouseDY = my - mouseY;
 	}
 
+	if (g_NetAutopilot) {
+		// scripted test player: the real mouse must not move its view
+		mouseDX = 0;
+		mouseDY = 0;
+	}
+
 	mouseX = mx;
 	mouseY = my;
 

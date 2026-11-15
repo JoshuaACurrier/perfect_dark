@@ -13,6 +13,7 @@
 #include "game/modelmgr.h"
 #include "lib/ailist.h"
 #include "net/netchr.h"
+#include "net/netlag.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -270,6 +271,12 @@ u32 netmsgClcMoveWrite(struct netbuf *dst)
 	netbufWriteU8(dst, CLC_MOVE);
 	netbufWriteU32(dst, g_NetLocalClient->inmove[0].tick);
 	netbufWritePlayerMove(dst, &g_NetLocalClient->outmove[0]);
+	// what we are looking at: the newest server time we can know of, and how far behind it
+	// guards and simulants are drawn (for lag compensation)
+	netbufWriteF32(dst, netchrClientNewestTime());
+	const f32 chrdelay = netchrClientDisplayDelay() * 8.f;
+	netbufWriteU8(dst, chrdelay > 255.f ? 255 : (u8)chrdelay);
+	netbufWriteU8(dst, netchrClientLoss());
 	return dst->error;
 }
 
@@ -278,6 +285,9 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 	struct netplayermove newmove;
 	const u32 outmoveack = netbufReadU32(src);
 	netbufReadPlayerMove(src, &newmove);
+	const f32 viewtime = netbufReadF32(src);
+	const u8 chrdelay = netbufReadU8(src);
+	const u8 loss = netbufReadU8(src);
 
 	if (srccl->state != CLSTATE_GAME) {
 		// silently ignore
@@ -285,6 +295,11 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 	}
 
 	srccl->outmoveack = outmoveack;
+
+	if (!src->error) {
+		netlagOnClientMove(srccl, viewtime, (f32)chrdelay / 8.f);
+		srccl->loss = loss > 100 ? 100 : loss;
+	}
 
 	if (!src->error) {
 		// enforce teleports and such
@@ -2216,8 +2231,47 @@ void netmsgMpScoresTick(void)
 
 /* hit markers: SVC_HITMARK */
 
+/* SVC_NETINFO: everyone's ping and packet loss, about once a second */
+
+u32 netmsgSvcNetInfoWrite(struct netbuf *dst)
+{
+	netbufWriteU8(dst, SVC_NETINFO);
+	const u32 countpos = dst->wp;
+	netbufWriteU8(dst, 0);
+	u8 count = 0;
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		const struct netclient *cl = &g_NetClients[i];
+		if (cl->state >= CLSTATE_GAME) {
+			netbufWriteU8(dst, cl->id);
+			netbufWriteU16(dst, cl->ping);
+			netbufWriteU8(dst, cl->loss);
+			++count;
+		}
+	}
+	if (!dst->error) {
+		dst->data[countpos] = count;
+	}
+	return dst->error;
+}
+
+u32 netmsgSvcNetInfoRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 count = netbufReadU8(src);
+	for (u8 n = 0; n < count && !src->error; ++n) {
+		const u8 id = netbufReadU8(src);
+		const u16 ping = netbufReadU16(src);
+		const u8 loss = netbufReadU8(src);
+		if (!src->error && id < NET_MAX_CLIENTS) {
+			g_NetClients[id].ping = ping;
+			g_NetClients[id].loss = loss;
+		}
+	}
+	return src->error;
+}
+
 u32 netmsgSvcHitmarkWrite(struct netclient *dstcl, bool kill)
 {
+	++g_NetLagHits;
 	if (!dstcl || dstcl->state < CLSTATE_GAME || !dstcl->peer) {
 		return 0;
 	}

@@ -28,6 +28,9 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-coop STAGE`, `--net-difficulty N` | Host: start a co-op mission instead (e.g. `0x30` Defection; 0 Agent, 1 Special Agent, 2 Perfect Agent). |
 | `--net-autoabort SECS` | Host: abort the mission after SECS seconds, to test the end screens. |
 | `--net-rounds N` | Host: auto-start up to N matches in a row; after each one ends the host skips its end screens and goes back to the lobby after 5 s. `--net-sims` simulants are only created for the first match, so later ones show whether the setup carried over. |
+| `--net-aimtest` | Lag compensation test. Host: everyone spawns with a CMP150, no score limit; with `--net-sims 0` and `--net-autopilot` the host walks up to the other player and strafes (better: play the host yourself and keep moving in front of the client). Client with `--net-autopilot`: keeps its sights on the nearest character in sight, as drawn, and holds fire. At `--net-autoquit` the host logs hits per firing frame and how far the client's aim line was from its target with no rewind, with the rewind used, and a few ticks either side. Use with `--net-lag` and `--net-cheats 0x24` (invincible, no reloads). |
+| `--net-nolagcomp` | Host: lag compensation off for this run. |
+| `--net-lagbias TICKS` | Host: rewind TICKS 60ths more (negative: less) than measured. |
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
