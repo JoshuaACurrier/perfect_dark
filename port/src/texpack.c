@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <SDL.h>
 #include <PR/ultratypes.h>
 #include "platform.h"
 #include "fs.h"
@@ -32,6 +33,11 @@ static char (*packfiles)[16] = NULL;
 static char packdir[FS_MAXPATH + 1];
 static s32 packcount = 0;
 static s32 packscanned = 0;
+
+// the loading half of this file
+static void texpackPrefetch(s32 texnum);
+static void texpackDropJobs(void);
+static SDL_mutex *joblock;
 
 // which texture number the texels at an address are
 static struct { const void *data; s32 texnum; } registry[TEXPACK_REG_SIZE];
@@ -103,8 +109,9 @@ static void texpackScan(void)
 	}
 	memset(packfiles, 0, TEXPACK_MAX_TEXTURES * sizeof(*packfiles));
 
-	// texture-packs/ next to the game data, the save folder or the exe
-	static const char *roots[] = { "$B/" TEXPACK_DIR, "$S/" TEXPACK_DIR, "$E/" TEXPACK_DIR };
+	// texture-packs/ next to the game data, the save folder or the exe, or one folder
+	// above the exe (so one copy serves several builds unpacked side by side)
+	static const char *roots[] = { "$B/" TEXPACK_DIR, "$S/" TEXPACK_DIR, "$E/" TEXPACK_DIR, "$E/../" TEXPACK_DIR };
 
 	for (s32 r = 0; r < (s32)(sizeof(roots) / sizeof(roots[0])) && !packcount; ++r) {
 		char root[FS_MAXPATH + 1];
@@ -160,7 +167,15 @@ static void texpackScan(void)
 
 void texpackRescan(void)
 {
-	packscanned = 0;
+	// (the workers read packdir and packfiles: nothing may be queued while those change)
+	texpackDropJobs();
+	if (joblock) {
+		SDL_LockMutex(joblock);
+	}
+	texpackScan();
+	if (joblock) {
+		SDL_UnlockMutex(joblock);
+	}
 }
 
 s32 texpackGetNumTextures(void)
@@ -193,6 +208,7 @@ void texpackRegisterTexture(const void *data, s32 texnum)
 		if (!registry[i].data || registry[i].data == data) {
 			registry[i].data = data;
 			registry[i].texnum = texnum;
+			texpackPrefetch(texnum); // start reading its image now, before it's drawn
 			return;
 		}
 	}
@@ -201,6 +217,7 @@ void texpackRegisterTexture(const void *data, s32 texnum)
 void texpackForgetAll(void)
 {
 	memset(registry, 0, sizeof(registry));
+	texpackDropJobs();
 }
 
 s32 texpackGetTextureNum(const void *data)
@@ -220,22 +237,51 @@ s32 texpackGetTextureNum(const void *data)
 	return -1;
 }
 
-/* loading */
+/* loading
+ *
+ * Reading and decoding an image takes from under a millisecond to over a hundred, so
+ * it happens on worker threads. The renderer asks for a texture's image every time it
+ * uses the texture; until the image is ready it draws the original.
+ *
+ * Textures are also queued when the game loads them (usually while a stage loads),
+ * so most images are ready before they are first drawn. Those are held in memory
+ * until the renderer takes them, up to TEXPACK_HELD_MAX; past that only images the
+ * renderer has asked for are decoded. */
 
-u8 *texpackLoadReplacement(const void *data, s32 *outWidth, s32 *outHeight)
+#define TEXPACK_WORKERS 3
+#define TEXPACK_HELD_MAX (384u * 1024 * 1024) // bytes of decoded images waiting to be taken
+#define TEXPACK_FRAME_PIXELS (1024 * 1024)    // images handed to the renderer per frame, beyond the first
+
+enum {
+	JOB_IDLE,
+	JOB_QUEUED, // waiting for a worker
+	JOB_BUSY,   // a worker is decoding it
+	JOB_DONE,   // rgba is ready to be taken
+	JOB_FAILED, // unreadable; not tried again
+};
+
+struct texjob {
+	u8 state;
+	u8 wanted;  // the renderer asked for it (the rest are read ahead)
+	u8 discard; // the stage changed while a worker was on it
+	s32 width, height;
+	u8 *rgba;
+};
+
+static struct texjob *jobs = NULL;
+static SDL_cond *jobcond = NULL;
+static s32 jobsqueued = 0;      // jobs in JOB_QUEUED
+static s32 jobswanted = 0;      // of those, how many the renderer asked for
+static size_t heldbytes = 0;    // decoded images in JOB_DONE
+static s32 framepixels = 0;     // handed to the renderer this frame
+static s32 threadsup = 0;
+
+u32 g_TexpackDecoded = 0;       // images decoded so far
+u32 g_TexpackWaitedFrames = 0;  // times the renderer drew an original because the image wasn't ready
+u32 g_TexpackSlowestMs = 0;     // longest single read + decode
+
+static u8 *texpackDecodeFile(const char *path, s32 *outWidth, s32 *outHeight)
 {
-	if (!texpackActive()) {
-		return NULL;
-	}
-
-	const s32 texnum = texpackGetTextureNum(data);
-	if (texnum < 0 || texnum >= TEXPACK_MAX_TEXTURES || !packfiles[texnum][0]) {
-		return NULL;
-	}
-
-	char path[FS_MAXPATH + 1];
-	snprintf(path, sizeof(path), "%s/%s", packdir, packfiles[texnum]);
-
 	FILE *f = fopen(path, "rb");
 	if (!f) {
 		return NULL;
@@ -259,8 +305,6 @@ u8 *texpackLoadReplacement(const void *data, s32 *outWidth, s32 *outHeight)
 		if (rgba) {
 			stbi_image_free(rgba);
 		}
-		sysLogPrintf(LOG_WARNING, "texpack: could not read %s", path);
-		packfiles[texnum][0] = '\0'; // don't try again
 		return NULL;
 	}
 
@@ -278,6 +322,210 @@ u8 *texpackLoadReplacement(const void *data, s32 *outWidth, s32 *outHeight)
 	*outWidth = w;
 	*outHeight = h;
 	return rgba;
+}
+
+// with joblock held: the next job a worker should take, or -1
+static s32 texpackNextJob(void)
+{
+	if (jobswanted > 0) {
+		for (s32 i = 0; i < TEXPACK_MAX_TEXTURES; ++i) {
+			if (jobs[i].state == JOB_QUEUED && jobs[i].wanted) {
+				return i;
+			}
+		}
+	}
+	if (jobsqueued > jobswanted && heldbytes < TEXPACK_HELD_MAX) {
+		for (s32 i = 0; i < TEXPACK_MAX_TEXTURES; ++i) {
+			if (jobs[i].state == JOB_QUEUED) {
+				return i;
+			}
+		}
+	}
+	return -1;
+}
+
+static int texpackWorker(void *arg)
+{
+	SDL_LockMutex(joblock);
+	for (;;) {
+		const s32 num = texpackNextJob();
+		if (num < 0) {
+			SDL_CondWait(jobcond, joblock);
+			continue;
+		}
+
+		struct texjob *job = &jobs[num];
+		job->state = JOB_BUSY;
+		job->discard = 0;
+		--jobsqueued;
+		if (job->wanted) {
+			--jobswanted;
+		}
+		char path[FS_MAXPATH + 1];
+		snprintf(path, sizeof(path), "%s/%s", packdir, packfiles[num]);
+		SDL_UnlockMutex(joblock);
+
+		const u32 start = SDL_GetTicks();
+		s32 w = 0, h = 0;
+		u8 *rgba = texpackDecodeFile(path, &w, &h);
+		const u32 took = SDL_GetTicks() - start;
+		if (!rgba) {
+			sysLogPrintf(LOG_WARNING, "texpack: could not read %s", path);
+		}
+
+		SDL_LockMutex(joblock);
+		if (job->discard) {
+			// the stage changed meanwhile: nobody is waiting for this any more
+			if (rgba) {
+				stbi_image_free(rgba);
+			}
+			job->state = rgba ? JOB_IDLE : JOB_FAILED;
+		} else if (rgba) {
+			job->rgba = rgba;
+			job->width = w;
+			job->height = h;
+			job->state = JOB_DONE;
+			heldbytes += (size_t)w * h * 4;
+		} else {
+			job->state = JOB_FAILED;
+		}
+		job->discard = 0;
+		job->wanted = 0;
+		++g_TexpackDecoded;
+		if (took > g_TexpackSlowestMs) {
+			g_TexpackSlowestMs = took;
+		}
+	}
+	return 0;
+}
+
+// starts the workers the first time there is something for them to do
+static s32 texpackThreadsUp(void)
+{
+	if (threadsup) {
+		return threadsup > 0;
+	}
+	threadsup = -1;
+	jobs = calloc(TEXPACK_MAX_TEXTURES, sizeof(*jobs));
+	joblock = SDL_CreateMutex();
+	jobcond = SDL_CreateCond();
+	if (!jobs || !joblock || !jobcond) {
+		return 0;
+	}
+	s32 started = 0;
+	for (s32 i = 0; i < TEXPACK_WORKERS; ++i) {
+		SDL_Thread *t = SDL_CreateThread(texpackWorker, "texpack", NULL);
+		if (t) {
+			SDL_DetachThread(t);
+			++started;
+		}
+	}
+	if (started) {
+		threadsup = 1;
+	}
+	return started > 0;
+}
+
+// with joblock held
+static void texpackQueue(s32 texnum, s32 wanted)
+{
+	struct texjob *job = &jobs[texnum];
+	if (job->state == JOB_IDLE) {
+		job->state = JOB_QUEUED;
+		job->wanted = 0;
+		++jobsqueued;
+	}
+	if (job->state == JOB_QUEUED && wanted && !job->wanted) {
+		job->wanted = 1;
+		++jobswanted;
+	}
+	if (job->state == JOB_BUSY) {
+		job->discard = 0; // it is of use again after a stage change
+	}
+	SDL_CondSignal(jobcond);
+}
+
+static void texpackPrefetch(s32 texnum)
+{
+	if (texnum < 0 || texnum >= TEXPACK_MAX_TEXTURES || !texpackActive() || !packfiles[texnum][0] || !texpackThreadsUp()) {
+		return;
+	}
+	SDL_LockMutex(joblock);
+	texpackQueue(texnum, 0);
+	SDL_UnlockMutex(joblock);
+}
+
+// forgets everything queued or decoded: the stage's textures are gone
+static void texpackDropJobs(void)
+{
+	if (threadsup <= 0) {
+		return;
+	}
+	SDL_LockMutex(joblock);
+	for (s32 i = 0; i < TEXPACK_MAX_TEXTURES; ++i) {
+		struct texjob *job = &jobs[i];
+		if (job->state == JOB_DONE) {
+			stbi_image_free(job->rgba);
+			job->rgba = NULL;
+			job->state = JOB_IDLE;
+		} else if (job->state == JOB_QUEUED) {
+			job->state = JOB_IDLE;
+		} else if (job->state == JOB_BUSY) {
+			job->discard = 1;
+		}
+		job->wanted = 0;
+	}
+	jobsqueued = 0;
+	jobswanted = 0;
+	heldbytes = 0;
+	SDL_UnlockMutex(joblock);
+}
+
+void texpackNewFrame(void)
+{
+	framepixels = 0;
+}
+
+s32 texpackPollReplacement(const void *data, u8 **outRgba, s32 *outWidth, s32 *outHeight)
+{
+	if (!texpackActive()) {
+		return TEXPACK_NONE;
+	}
+
+	const s32 texnum = texpackGetTextureNum(data);
+	if (texnum < 0 || texnum >= TEXPACK_MAX_TEXTURES || !packfiles[texnum][0] || !texpackThreadsUp()) {
+		return TEXPACK_NONE;
+	}
+
+	s32 ret = TEXPACK_PENDING;
+	struct texjob *job = &jobs[texnum];
+
+	SDL_LockMutex(joblock);
+	if (job->state == JOB_FAILED) {
+		ret = TEXPACK_NONE;
+	} else if (job->state == JOB_DONE) {
+		// spread the uploads of a burst over a few frames
+		const s32 pixels = job->width * job->height;
+		if (framepixels == 0 || framepixels + pixels <= TEXPACK_FRAME_PIXELS) {
+			framepixels += pixels;
+			*outRgba = job->rgba;
+			*outWidth = job->width;
+			*outHeight = job->height;
+			job->rgba = NULL;
+			job->state = JOB_IDLE;
+			heldbytes -= (size_t)pixels * 4;
+			SDL_CondSignal(jobcond); // room to read ahead again
+			ret = TEXPACK_READY;
+		}
+	} else {
+		texpackQueue(texnum, 1);
+	}
+	SDL_UnlockMutex(joblock);
+
+	if (ret == TEXPACK_PENDING) {
+		++g_TexpackWaitedFrames;
+	}
+	return ret;
 }
 
 void texpackFreeReplacement(u8 *rgba)

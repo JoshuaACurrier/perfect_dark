@@ -902,23 +902,28 @@ static void import_texture(int i, int tile, bool importReplacement) {
         key = { orig_addr, {}, fmt, siz, palette_index };
     }
 
-    if (gfx_texture_cache_lookup(i, key)) {
-        return;
-    }
+    const bool cached = gfx_texture_cache_lookup(i, key);
+    TextureCacheNode* node = rendering_state.textures[i];
 
-    // an HD texture pack's image for this texture, if there is one
-    if (texpackActive()) {
+    // An HD texture pack's image for this texture, if there is one. It is decoded in the
+    // background: until it is ready the texture holds the original, marked pending.
+    if (node && (!cached || node->second.pending)) {
+        u8 *rep = nullptr;
         s32 rep_width = 0, rep_height = 0;
-        u8 *rep = texpackLoadReplacement(orig_addr, &rep_width, &rep_height);
-        if (rep) {
+        const s32 state = texpackPollReplacement(orig_addr, &rep, &rep_width, &rep_height);
+        node->second.pending = (state == TEXPACK_PENDING);
+        if (state == TEXPACK_READY) {
             gfx_rapi->upload_texture(rep, rep_width, rep_height, true);
             texpackFreeReplacement(rep);
-            if (rendering_state.textures[i]) {
-                rendering_state.textures[i]->second.replaced = true;
-                gfx_rapi->set_sampler_parameters(i, false, 0, 0, true);
-            }
+            node->second.replaced = true;
+            // (keep the filter and wrap modes it was already drawn with; only mipmaps are new)
+            gfx_rapi->set_sampler_parameters(i, node->second.linear_filter, node->second.cms, node->second.cmt, true);
             return;
         }
+    }
+
+    if (cached) {
+        return;
     }
 
     if (fmt == G_IM_FMT_RGBA) {
@@ -2630,6 +2635,7 @@ extern "C" struct GfxRenderingAPI* gfx_get_current_rendering_api(void) {
 }
 
 extern "C" void gfx_start_frame(void) {
+    texpackNewFrame();
     gfx_wapi->handle_events();
     gfx_wapi->get_dimensions(&gfx_current_window_dimensions.width, &gfx_current_window_dimensions.height,
                              &gfx_current_window_position_x, &gfx_current_window_position_y);

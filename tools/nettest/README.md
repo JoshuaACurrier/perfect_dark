@@ -32,7 +32,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
 | `--net-teams` | Host: turn teams on for the auto-started match: the players and every other simulant against the rest. |
 | `--net-hudtest` | Keep the hit marker on screen (alternating hit / kill) and log where teammates' names are drawn, for screenshots. |
-| `--net-autoquit SECS` | Quit SECS seconds after the match starts. Logs the scoreboard as this machine sees it and how many footsteps played. |
+| `--net-autoquit SECS` | Quit SECS seconds after the match starts. Logs the scoreboard as this machine sees it, how many footsteps played, frame times (`NET: frames in game: ... took 30 ms or longer`, and a `NET: slow frame` line for each of the first 20) and what the texture pack loader did. |
 | `--net-autopilot [SEED]` | Drive the local player with random but repeatable input. |
 | `--net-dump FILE`, `--net-dump-interval T` | Write every chr's state to FILE every T ticks. |
 | `--net-lag MS`, `--net-jitter MS`, `--net-loss PCT` | Simulate a bad connection on outgoing packets. |

@@ -12,7 +12,8 @@ extern "C" {
 // A pack is a folder of images named after the game's texture numbers: four hex
 // digits and .png or .jpg (0a3f.png), the layout community packs for the PC port
 // use. It goes in its own folder inside texture-packs/, next to the game data
-// (the --basedir folder), the save folder or the exe. The image replaces the
+// (the --basedir folder), the save folder or the exe, or one folder above the exe
+// (so one copy serves several builds side by side). The image replaces the
 // texture when the renderer uploads it; it can be any size, since texture
 // coordinates are relative to the original's size.
 //
@@ -37,10 +38,27 @@ void texpackRegisterTexture(const void *data, s32 texnum);
 void texpackForgetAll(void);
 s32 texpackGetTextureNum(const void *data);
 
-// The pack's image for the texture at data as RGBA32, in the game's row order (bottom
-// row first), or NULL if it has none. Free with texpackFreeReplacement().
-u8 *texpackLoadReplacement(const void *data, s32 *outWidth, s32 *outHeight);
+// The pack's image for the texture at data. Images are read and decoded on worker
+// threads, so the renderer asks every time it uses the texture and draws the original
+// until the answer is TEXPACK_READY:
+//   TEXPACK_NONE     the pack has no image for it
+//   TEXPACK_PENDING  not decoded yet (it is now queued, ahead of anything read ahead)
+//   TEXPACK_READY    *outRgba is the image as RGBA32, in the game's row order (bottom row
+//                    first); free it with texpackFreeReplacement()
+#define TEXPACK_NONE    0
+#define TEXPACK_PENDING 1
+#define TEXPACK_READY   2
+
+s32 texpackPollReplacement(const void *data, u8 **outRgba, s32 *outWidth, s32 *outHeight);
 void texpackFreeReplacement(u8 *rgba);
+
+// once a frame, from the renderer: limits how many images are handed over per frame
+void texpackNewFrame(void);
+
+// for the logs
+extern u32 g_TexpackDecoded;
+extern u32 g_TexpackWaitedFrames;
+extern u32 g_TexpackSlowestMs;
 
 #ifdef __cplusplus
 }

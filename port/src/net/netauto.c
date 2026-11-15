@@ -46,6 +46,7 @@
 #include "lib/model.h"
 #include "lib/main.h"
 #include "system.h"
+#include "texpack.h"
 
 extern u32 g_MixerSpatialBlocks; // mixer.c
 
@@ -289,11 +290,30 @@ static void netAutoTickStart(void)
 
 /* autoquit */
 
+static u32 g_NetAutoFrames = 0;
+static u32 g_NetAutoSlowFrames = 0;   // 30 ms or longer
+static u32 g_NetAutoWorstFrameMs = 0;
+
 static void netAutoTickQuit(void)
 {
 	if (g_NetLocalClient && g_NetLocalClient->state == CLSTATE_GAME) {
 		++g_NetAutoGameTicks;
 		++g_NetAutoMatchTicks;
+
+		// frame times in game, to spot hitches
+		static u64 lastframe = 0;
+		const u64 now = sysGetMicroseconds();
+		if (lastframe && g_NetAutoGameTicks > 1) {
+			const u32 ms = (u32)((now - lastframe) / 1000);
+			++g_NetAutoFrames;
+			if (ms > g_NetAutoWorstFrameMs) {
+				g_NetAutoWorstFrameMs = ms;
+			}
+			if (ms >= 30 && ++g_NetAutoSlowFrames <= 20) {
+				sysLogPrintf(LOG_NOTE, "NET: slow frame: %u ms, %u ticks into the game", ms, g_NetAutoGameTicks);
+			}
+		}
+		lastframe = now;
 	}
 
 	if (g_NetMode == NETMODE_SERVER && g_NetAutoAbortSecs > 0 && !g_NetAutoAborted
@@ -314,6 +334,10 @@ static void netAutoTickQuit(void)
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
 		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
+		sysLogPrintf(LOG_NOTE, "NET: frames in game: %u, of which %u took 30 ms or longer; longest %u ms",
+			g_NetAutoFrames, g_NetAutoSlowFrames, g_NetAutoWorstFrameMs);
+		sysLogPrintf(LOG_NOTE, "NET: texture pack: %u images decoded in the background, slowest %u ms, %u draws with the original while waiting",
+			g_TexpackDecoded, g_TexpackSlowestMs, g_TexpackWaitedFrames);
 		if (g_Vars.mplayerisrunning) {
 			// the scoreboard as this machine sees it, to compare host and clients
 			for (s32 i = 0; i < g_MpNumChrs; ++i) {

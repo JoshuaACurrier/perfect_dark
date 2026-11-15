@@ -44,6 +44,7 @@ struct TextureCacheValue {
     uint8_t cms, cmt;
     bool linear_filter;
     bool replaced; // holds a texture pack's image, which wants mipmaps whatever the game asked for
+    bool pending;  // holds the original while the texture pack's image is still being decoded
 
     std::list<struct TextureCacheMapIter>::iterator lru_location;
 };

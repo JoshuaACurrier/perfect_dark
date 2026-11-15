@@ -17,7 +17,7 @@
 #   PD_OUT      where save dirs and logs go (default: $PD_DATA/nettest)
 #
 # example: run a 2-player Combat Sim with 4 Simulants on Skedar Ruins for 60s:
-#   tools/nettest/nettest.sh -t 60 -H "--net-autostart 2 --net-stage 0x26 --net-sims 4" -- --net-autoquit 55
+#   tools/nettest/nettest.sh -t 60 -H "--net-autostart 2 --net-stage 0x32 --net-sims 4" -- --net-autoquit 55
 
 set -u
 

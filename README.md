@@ -139,7 +139,10 @@ In Combat Simulator the death screen says who killed you and counts down to an a
 All three are in `Options > Extended > Video` and on by default:
 * **HD Texture Pack** (`Video.TexturePacks`): loads replacement textures from a community pack. A pack is a folder of images named after the game's
   texture numbers (`0a3f.png` / `.jpg`), such as [PD Forever Plus HD](https://github.com/retro-foundry/Perfect-Dark-Plus-HD-Textures/releases).
-  Put the pack's folder inside a `texture-packs` folder next to the game data (the `--basedir` folder), the save folder or the exe.
+  Put the pack's folder inside a `texture-packs` folder next to the game data (the `--basedir` folder), the save folder or the exe,
+  or one folder above the exe (so one copy serves several builds unpacked side by side).
+  Images are read and decoded on background threads, starting when the game loads a texture; until an image is ready the original is drawn.
+  `tools/texpack/packshrink.c` makes a smaller copy of a pack (PNGs with no transparency become JPGs; folders the game doesn't load are left out).
   With several packs, `Video.TexturePack` in `pd.ini` names the folder to use (default: the first in name order).
   Not handled yet: the packs' per-model folders (textures stored inside model files) and font folders. Packs made for XBLA models need those models, which this port doesn't have.
 * **Ambient Occlusion** (`Video.AmbientOcclusion`, strength `Video.AmbientOcclusionStrength` 0..2): soft shadows where surfaces meet (corners, under ledges, around characters).
