@@ -53,3 +53,11 @@ tools/nettest/nettest.sh -t 75 \
   -- --net-autoquit 45
 python3 tools/nettest/desync.py $O/host/dump.csv $O/client1/dump.csv
 ```
+
+## Packaging and updates
+
+| Script | What it does |
+|---|---|
+| `package.sh [--textures] [-n "note"]...` | Builds, then updates `../pd-data/dist/PerfectDarkOnline/` in place (program files only: a ROM, save and settings in it stay), makes `PerfectDarkOnline.zip` for first installs, and `dist/release/` with every program file plus `manifest.txt` (build number = commit count, commit, protocol, notes, SHA-256 and size per file). The shipped exe is stripped; the full one goes to `../pd-data/symbols/pd-<commit>.exe` for reading crash addresses with `addr2line`. |
+| `publish.sh` | Uploads `dist/release/` as release `online-<build>` on the fork (never upstream) and marks it latest. Refuses if the folder holds a ROM, save, settings or textures, if the packaged commit isn't HEAD, or if it isn't pushed. Publishing is public: ask Josh first. |
+| `Update.ps1` | Shipped in the folder; `Play.bat` runs it before the game. Reads `manifest.txt` from the latest release, and if its build number is higher than `version.txt`, downloads the files whose hash differs, verifies them, and swaps them in. `PD_UPDATE_URL` points it somewhere else (tested with `python -m http.server` over a copy of `dist/release`). |

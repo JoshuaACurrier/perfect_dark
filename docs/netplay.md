@@ -65,6 +65,19 @@ one round trip after the shot. Footsteps (yours, other players', guards' and sim
 games, from where they are; the original only plays them with one player, since split screen players
 share the speakers.
 
+### Getting the game and updates (this fork's builds)
+
+Download `PerfectDarkOnline.zip` from the fork's latest release once, unpack it, put your own ROM
+in `data/`, and start the game with `Play.bat`. From then on `Play.bat` checks the latest release
+each time it starts and, if there is a newer build, downloads only the program files that changed
+(a few megabytes), checks them and swaps them in before starting the game. Your ROM, save,
+settings, logs and texture packs are never touched. `version.txt` says which build you have; an
+empty file called `noupdate.txt` in the folder switches the check off. Without internet the game
+simply starts as it is.
+
+Everyone in a game needs the same build. If joining says "Protocol or version mismatch", both
+sides should close the game and start `Play.bat` again.
+
 ### Other players' guns
 
 The other players' gun sounds (shots, reloads, drawing a weapon) come from where those players
