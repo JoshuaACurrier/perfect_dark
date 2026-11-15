@@ -315,6 +315,13 @@ static inline s32 netClientNeedMove(const struct netclient *cl)
 	if (move->tick && cl->outmoveack >= move->tick) {
 		return false;
 	}
+	// These go out unreliably. If the last one before a player stops moving and turning is
+	// lost, nothing changes afterwards and it was never sent again: the others kept seeing
+	// them face the old way while their shots went where they really aimed. So repeat the
+	// current one four times a second even when nothing changed.
+	if (move->tick >= moveprev->tick + NET_MOVE_REFRESH_TICKS) {
+		return true;
+	}
 	const u8 *cmpa = (const u8 *)move + sizeof(move->tick);
 	const u8 *cmpb = (const u8 *)moveprev + sizeof(move->tick);
 	return (memcmp(cmpa, cmpb, sizeof(*move) - sizeof(move->tick)) != 0);

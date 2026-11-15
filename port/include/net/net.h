@@ -15,6 +15,7 @@
 #define NET_MAX_ADDR 256
 
 #define NET_BUFSIZE 1440
+#define NET_MOVE_REFRESH_TICKS 15 // resend an unchanged player move this often (frames)
 
 #define NET_DEFAULT_PORT 27100
 
