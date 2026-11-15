@@ -26,4 +26,13 @@ Gfx *hudextDrawHitmark(Gfx *gdl, s32 x, s32 y);
 Gfx *hudextDrawDeath(Gfx *gdl);
 Gfx *hudextDrawTeamNames(Gfx *gdl);
 
+// Network games: while the local player is dead and waiting, the view follows another
+// living character from behind (teammates first); the aim button moves to the next one.
+// Game.MpSpectate switches it off.
+extern s32 g_MpSpectate;
+
+// call after the dead player's own camera has been set for the frame
+void hudextSpectateCamera(void);
+Gfx *hudextDrawSpectate(Gfx *gdl);
+
 #endif

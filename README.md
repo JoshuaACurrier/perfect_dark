@@ -134,6 +134,7 @@ Also in `Options > Extended > Game`, all on by default and not in the original g
 * **Show Ping (Network Games)**: your ping, and packet loss when there is any, at the top right; the host sees the highest of the other players' (`Net.ShowPing`).
 * **Score And Timer Bar (Network Games)**: the leading team or player, the time left, the score to reach, and your own team or place, at the top of the screen; the frame turns red in the last minute or within two points of the limit (`Game.MpScoreBar`).
 * **Kill Feed (Network Games)**: who killed whom, at the top left (`Game.MpKillFeed`).
+* **Watch Others While Dead (Network Games)**: while you wait to respawn, the view follows another living player from behind; the aim button moves to the next one (`Game.MpSpectate`).
 
 In Combat Simulator the death screen says who killed you and counts down to an automatic respawn
 (`Options > Extended > Auto Respawn`, `Game.MpAutoRespawn`, seconds, 0 = off; pressing fire still respawns as soon as the screen fades).
