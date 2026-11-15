@@ -343,6 +343,13 @@ static void netlagMoveChildren(struct prop *parent, const struct coord *d, s32 d
 	}
 
 	for (struct prop *child = parent->child; child; child = child->next) {
+		// An item's matrices are allocated for the frame it is drawn in. Without this flag
+		// they were not set this tick and the pointer is left over from an earlier frame
+		// (writing through it crashed the host). The shot test skips such items and
+		// everything attached to them the same way (func0f0859a0).
+		if (!(child->flags & PROPFLAG_ONTHISSCREENTHISTICK)) {
+			continue;
+		}
 		if ((child->type == PROPTYPE_OBJ || child->type == PROPTYPE_WEAPON || child->type == PROPTYPE_DOOR) && child->obj) {
 			netlagMoveModel(child->obj->model, d);
 		}
