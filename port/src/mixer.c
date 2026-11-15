@@ -154,6 +154,7 @@ void aLoadADPCMImpl(int num_entries_times_16, const int16_t *book_source_addr) {
 #define LIM_RELEASE 0.0003f   // per sample: about 150 ms
 
 int g_MixerLimiter = 1;               // Audio.Limiter
+int g_MixerMasterVolume = 70;         // Audio.MasterVolume, percent: everything the game plays, from the first frame
 uint32_t g_MixerLimitedSamples = 0;   // output samples the limiter turned down
 uint32_t g_MixerClippedSamples = 0;   // output samples that still hit full scale
 uint32_t g_MixerOutputSamples = 0;
@@ -162,7 +163,9 @@ static void mixerFinalLevel(int16_t *d, int nframes) {
     static float ring[LIM_LOOKAHEAD][2];
     static int pos = 0;
     static float gain = 1.f;
-    const float up = (float)(1 << MIX_HEADROOM_SHIFT);
+    const int master = g_MixerMasterVolume < 0 ? 0 : (g_MixerMasterVolume > 100 ? 100 : g_MixerMasterVolume);
+    // (squared: closer to how loud it sounds, so the slider's middle is about half as loud)
+    const float up = (float)(1 << MIX_HEADROOM_SHIFT) * ((float)master / 100.f) * ((float)master / 100.f);
 
     for (int i = 0; i < nframes; ++i) {
         const float l = (float)d[i * 2] * up;

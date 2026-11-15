@@ -59,6 +59,52 @@
 #include "video.h"
 #include "net/net.h"
 #include "net/netmsg.h"
+
+/**
+ * A network game runs the other players' guns on this machine too, with the same
+ * code as our own. Their gun's sounds (shots, reloads, drawing a weapon) must come
+ * from where they are, not play in our ears as if we had fired.
+ *
+ * Returns true if the current player is someone else's, in which case the sound has
+ * been played from their position instead (or left out, for looping sounds, which
+ * would need stopping again).
+ */
+static bool bgunRemoteSound(s16 sound, bool loop)
+{
+	struct player *pl = g_Vars.currentplayer;
+
+	if (!g_NetMode || !pl || !pl->isremote) {
+		return false;
+	}
+
+	if (!loop && sound > 0 && pl->prop) {
+		psCreate(NULL, pl->prop, sound, -1, -1, 0, 0, PSTYPE_NONE, 0, -1.0f, 0, -1, -1.0f, -1.0f, -1.0f);
+	}
+
+	return true;
+}
+
+static struct sndstate *bgunOwnSnd(s32 arg0, s16 sound, struct sndstate **handle, s32 volume, s32 pan, f32 pitch, s32 fxbus, s32 fxmix)
+{
+	if (bgunRemoteSound(sound, false)) {
+		return NULL;
+	}
+
+	return sndStart(arg0, sound, handle, volume, pan, pitch, fxbus, fxmix);
+}
+
+static struct sndstate *bgunOwnLoopSnd(s32 arg0, s16 sound, struct sndstate **handle, s32 volume, s32 pan, f32 pitch, s32 fxbus, s32 fxmix)
+{
+	if (bgunRemoteSound(sound, true)) {
+		return NULL;
+	}
+
+	return sndStart(arg0, sound, handle, volume, pan, pitch, fxbus, fxmix);
+}
+#else
+#define bgunOwnSnd sndStart
+#define bgunOwnLoopSnd sndStart
+#define bgunRemoteSound(sound, loop) false
 #endif
 
 #define GUNLOADSTATE_FLUX     0
@@ -842,10 +888,10 @@ void bgun0f0981e8(struct hand *hand, struct modeldef *modeldef)
 							case GUNCMD_PLAYSOUND:
 #if VERSION >= VERSION_NTSC_1_0
 								if (hasspeed) {
-									snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, speed, 1, -1, 1);
+									if (!bgunRemoteSound(cmd->unk04, false)) snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, speed, 1, -1, 1);
 									hasspeed = false;
 								} else {
-									snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, 1.0f, 1, -1, 1);
+									if (!bgunRemoteSound(cmd->unk04, false)) snd00010718(0, 0, AL_VOL_FULL, AL_PAN_CENTER, cmd->unk04, 1.0f, 1, -1, 1);
 								}
 #else
 								audiohandle = sndStart(var80095200, cmd->unk04, NULL, -1, -1, -1, -1, -1);
@@ -1684,7 +1730,7 @@ s32 bgunTickIncReload(struct handweaponinfo *info, s32 handnum, struct hand *han
 					// No reload sound
 					break;
 				default:
-					sndStart(var80095200, SFX_RELOAD_DEFAULT, 0, -1, -1, -1, -1, -1);
+					bgunOwnSnd(var80095200, SFX_RELOAD_DEFAULT, 0, -1, -1, -1, -1, -1);
 					break;
 				}
 			}
@@ -2001,9 +2047,9 @@ void bgun0f09a6f8(struct handweaponinfo *info, s32 handnum, struct hand *hand, s
 				struct sndstate *handle = NULL;
 
 				if (hand->audiohandle2 == NULL) {
-					handle = sndStart(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle2, -1, -1, -1, -1, -1);
+					handle = bgunOwnSnd(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle2, -1, -1, -1, -1, -1);
 				} else if (hand->audiohandle3 == NULL) {
-					handle = sndStart(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle3, -1, -1, -1, -1, -1);
+					handle = bgunOwnSnd(var80095200, gsetGetSingleShootSound(&hand->gset), &hand->audiohandle3, -1, -1, -1, -1, -1);
 				}
 
 				hand->lastshootframe60 = g_Vars.lvframe60;
@@ -2634,7 +2680,7 @@ s32 bgunTickIncAttackEmpty(struct handweaponinfo *info, s32 handnum, struct hand
 				struct sndstate *handle;
 #endif
 
-				handle = sndStart(var80095200, SFX_HIT_WATER, NULL, -1, -1, -1, -1, -1);
+				handle = bgunOwnSnd(var80095200, SFX_HIT_WATER, NULL, -1, -1, -1, -1, -1);
 
 				if (handle) {
 					audioPostEvent(handle, AL_SNDP_PITCH_EVT, *(s32 *)&speed);
@@ -2660,7 +2706,7 @@ s32 bgunTickIncAttackEmpty(struct handweaponinfo *info, s32 handnum, struct hand
 				struct sndstate *handle;
 #endif
 
-				handle = sndStart(var80095200, SFX_FIREEMPTY, NULL, -1, -1, -1, -1, -1);
+				handle = bgunOwnSnd(var80095200, SFX_FIREEMPTY, NULL, -1, -1, -1, -1, -1);
 
 				if (handle) {
 					audioPostEvent(handle, AL_SNDP_PITCH_EVT, *(s32 *)&speed);
@@ -2683,7 +2729,7 @@ s32 bgunTickIncAttackEmpty(struct handweaponinfo *info, s32 handnum, struct hand
 			break;
 		default:
 			// Default click sound effect
-			sndStart(var80095200, SFX_FIREEMPTY, NULL, -1, -1, -1, -1, -1);
+			bgunOwnSnd(var80095200, SFX_FIREEMPTY, NULL, -1, -1, -1, -1, -1);
 			break;
 		}
 	}
@@ -3044,7 +3090,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					prevpri1 = osGetThreadPri(0);
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
-					handle1 = sndStart(var80095200, SFX_EQUIP_HORIZONSCANNER, 0, -1, -1, -1, -1, -1);
+					handle1 = bgunOwnSnd(var80095200, SFX_EQUIP_HORIZONSCANNER, 0, -1, -1, -1, -1, -1);
 
 					if (handle1) {
 						audioPostEvent(handle1, AL_SNDP_PITCH_EVT, *(s32 *)&speed1);
@@ -3055,14 +3101,14 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 #endif
 					break;
 				case WEAPON_LASER:
-					sndStart(var80095200, SFX_PICKUP_LASER, 0, -1, -1, -1, -1, -1);
+					bgunOwnSnd(var80095200, SFX_PICKUP_LASER, 0, -1, -1, -1, -1, -1);
 					break;
 				case WEAPON_COMBATKNIFE:
-					sndStart(var80095200, SFX_PICKUP_KNIFE, 0, -1, -1, -1, -1, -1);
+					bgunOwnSnd(var80095200, SFX_PICKUP_KNIFE, 0, -1, -1, -1, -1, -1);
 					break;
 				case WEAPON_REMOTEMINE:
 					if (handnum == HAND_RIGHT) {
-						sndStart(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
+						bgunOwnSnd(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
 					}
 					break;
 				case WEAPON_TIMEDMINE:
@@ -3076,7 +3122,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 				case WEAPON_COMMSRIDER:
 				case WEAPON_TRACERBUG:
 				case WEAPON_TARGETAMPLIFIER:
-					sndStart(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
+					bgunOwnSnd(var80095200, SFX_PICKUP_MINE, 0, -1, -1, -1, -1, -1);
 					break;
 				case WEAPON_TRANQUILIZER:
 				case WEAPON_PSYCHOSISGUN:
@@ -3087,7 +3133,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
 
-					handle2 = sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					handle2 = bgunOwnSnd(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
 
 					if (handle2) {
 						audioPostEvent(handle2, AL_SNDP_PITCH_EVT, *(s32 *)&speed2);
@@ -3105,7 +3151,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					osSetThreadPri(0, osGetThreadPri(&g_AudioManager.thread) + 1);
 #endif
 
-					handle3 = sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					handle3 = bgunOwnSnd(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
 
 					if (handle3) {
 						audioPostEvent(handle3, AL_SNDP_PITCH_EVT, *(s32 *)&speed3);
@@ -3145,7 +3191,7 @@ s32 bgunTickIncChangeGun(struct handweaponinfo *info, s32 handnum, struct hand *
 					// No equip sound
 					break;
 				default:
-					sndStart(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
+					bgunOwnSnd(var80095200, SFX_PICKUP_GUN, 0, -1, -1, -1, -1, -1);
 					break;
 				}
 			}
@@ -5608,7 +5654,7 @@ void bgunTickSwitch2(void)
 			if (ctrl->weaponnum == WEAPON_DISGUISE40 || ctrl->weaponnum == WEAPON_DISGUISE41) {
 				struct chrdata *chr = player->prop->chr;
 
-				sndStart(var80095200, SFX_DISGUISE_ON, 0, -1, -1, -1, -1, -1);
+				bgunOwnSnd(var80095200, SFX_DISGUISE_ON, 0, -1, -1, -1, -1, -1);
 
 				g_Vars.currentplayer->disguised = true;
 
@@ -7090,7 +7136,7 @@ void bgunUpdateReaper(struct hand *hand, struct modeldef *modeldef)
 	var8009d140 = hand->matmot1;
 
 	if (hand->audiohandle == NULL && hand->matmot3 > 0.1f && g_Vars.lvupdate240 != 0) {
-		sndStart(var80095200, SFX_805E, &hand->audiohandle, -1, -1, -1.0f, -1, -1);
+		bgunOwnLoopSnd(var80095200, SFX_805E, &hand->audiohandle, -1, -1, -1.0f, -1, -1);
 	}
 
 	if (hand->audiohandle != NULL) {
@@ -7249,7 +7295,7 @@ void bgunUpdateLaser(struct hand *hand)
 {
 	if (hand->firing && hand->gset.weaponfunc == FUNC_SECONDARY) {
 		if (hand->audiohandle == NULL && g_Vars.lvupdate240 != 0) {
-			sndStart(var80095200, SFX_LASER_STREAM, &hand->audiohandle, -1, -1, -1, -1, -1);
+			bgunOwnLoopSnd(var80095200, SFX_LASER_STREAM, &hand->audiohandle, -1, -1, -1, -1, -1);
 		}
 
 		hand->matmot1 = 1;
@@ -8271,7 +8317,7 @@ void bgunTickMaulerCharge(void)
 					&& hand->matmot1 > 0.1f
 					&& charging
 					&& g_Vars.lvupdate240 != 0) {
-				sndStart(var80095200, SFX_MAULER_CHARGE, &hand->audiohandle, -1, -1, -1, -1, -1);
+				bgunOwnLoopSnd(var80095200, SFX_MAULER_CHARGE, &hand->audiohandle, -1, -1, -1, -1, -1);
 			}
 
 			if (hand->audiohandle) {
@@ -13284,7 +13330,7 @@ void bgunAddBoost(s32 amount)
 	if (!g_Vars.speedpillwant) {
 		u32 sound = lvGetSlowMotionType() ? SFX_ARGH_JO_02AD : SFX_JO_BOOST_ACTIVATE;
 
-		sndStart(var80095200, sound, 0, -1, -1, -1, -1, -1);
+		bgunOwnSnd(var80095200, sound, 0, -1, -1, -1, -1, -1);
 	}
 
 	g_Vars.speedpillwant = true;

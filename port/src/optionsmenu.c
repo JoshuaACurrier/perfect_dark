@@ -1529,6 +1529,20 @@ static MenuItemHandlerResult menuhandlerHrtf(s32 operation, struct menuitem *ite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerMasterVolume(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_MixerMasterVolume;
+		break;
+	case MENUOP_SET:
+		g_MixerMasterVolume = data->slider.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerOcclusion(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
@@ -1569,6 +1583,14 @@ static MenuItemHandlerResult menuhandlerLimiter(s32 operation, struct menuitem *
 }
 
 struct menuitem g_ExtendedAudioMenuItems[] = {
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Master Volume",
+		100,
+		menuhandlerMasterVolume,
+	},
 	{
 		MENUITEMTYPE_CHECKBOX,
 		0,

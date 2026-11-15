@@ -588,7 +588,7 @@ void netAutoTick(void)
 			}
 		} else if (!saidingame && g_NetAutoGameTicks > 300) {
 			saidingame = 1;
-			netChat(NULL, g_NetMode == NETMODE_SERVER ? "gl hf" : "this is a longer chat line to see how the window wraps text onto a second row");
+			netChat(NULL, g_NetMode == NETMODE_SERVER ? "gl hf" : "this is a longer chat line to see how the window wraps text");
 		}
 	}
 

@@ -51,6 +51,8 @@ s32 g_NetHudKillFeed = 1;
 
 #define ROW_H 8
 #define PANEL_W 142
+#define CHAT_W 112        // the chat window, at the right edge of the screen
+#define CHAT_LOBBY_ROWS 5 // its height in the lobby: four lines and the one being typed
 
 /* roster: who is connected */
 
@@ -132,7 +134,7 @@ void nethudChatAdd(const char *text)
 	// long lines wrap onto more rows: as many words as fit the chat window's width
 	char src[256];
 	nethudCopyName(src, sizeof(src), text);
-	const s32 maxwidth = PANEL_W - 8;
+	const s32 maxwidth = CHAT_W - 8;
 	const size_t len = strlen(src);
 	size_t ofs = 0;
 
@@ -438,11 +440,16 @@ static Gfx *nethudRenderChat(Gfx *gdl, s32 x, s32 bottom, bool always)
 		return gdl;
 	}
 
-	const s32 boxrows = always ? CHAT_LINES + 1 : rows;
+	// in a match at most as many lines as the lobby window holds, so it stays clear of
+	// the radar above and the ammo display below
+	s32 boxrows = always ? CHAT_LOBBY_ROWS : rows;
+	if (boxrows > CHAT_LOBBY_ROWS) {
+		boxrows = CHAT_LOBBY_ROWS;
+	}
 	const s32 top = bottom - boxrows * ROW_H - 4;
 
 	if (always || g_ChatTyping) {
-		gdl = hudmsgRenderBox(gdl, x, top, x + PANEL_W, bottom, 1.f, COL_BORDER, 0.7f);
+		gdl = hudmsgRenderBox(gdl, x, top, x + CHAT_W, bottom, 1.f, COL_BORDER, 0.7f);
 	}
 
 	s32 y = bottom - 2 - ROW_H;
@@ -459,7 +466,7 @@ static Gfx *nethudRenderChat(Gfx *gdl, s32 x, s32 bottom, bool always)
 		y -= ROW_H;
 	}
 
-	for (s32 i = g_ChatNum - 1; i >= first; --i) {
+	for (s32 i = g_ChatNum - 1; i >= first && y >= top + 2; --i) {
 		gdl = nethudText(gdl, x + 3, y, g_ChatLines[i], COL_TEXT);
 		y -= ROW_H;
 	}
@@ -522,8 +529,9 @@ static Gfx *nethudRenderLobby(Gfx *gdl)
 	gdl = nethudText(gdl, x + 3, y + 1, g_NetMode == NETMODE_CLIENT ? "R: ready / not ready" : "Start when all are ready", COL_DIM);
 
 	// chat window, bottom left
-	// (above the "Server:" line the game puts in the corner)
-	gdl = nethudRenderChat(gdl, x, SCREEN_HEIGHT_LO - 20, true);
+	// chat window, bottom right
+	gSPExtraGeometryModeEXT(gdl++, G_ASPECT_MODE_EXT, G_ASPECT_RIGHT_EXT);
+	gdl = nethudRenderChat(gdl, SCREEN_WIDTH_LO - 4 - CHAT_W, SCREEN_HEIGHT_LO - 6, true);
 
 	return gdl;
 }
@@ -754,8 +762,10 @@ Gfx *nethudRender(Gfx *gdl)
 	} else {
 		const bool match = g_Vars.normmplayerisrunning && g_Vars.players[0];
 
+		// chat at the right edge, between the radar and the ammo display
+		gSPExtraGeometryModeEXT(gdl++, G_ASPECT_MODE_EXT, G_ASPECT_RIGHT_EXT);
+		gdl = nethudRenderChat(gdl, SCREEN_WIDTH_LO - 4 - CHAT_W, 100, false);
 		gSPExtraGeometryModeEXT(gdl++, G_ASPECT_MODE_EXT, G_ASPECT_LEFT_EXT);
-		gdl = nethudRenderChat(gdl, 4, SCREEN_HEIGHT_LO - 62, false);
 
 		if (match && g_NetHudKillFeed) {
 			// (top left: the radar has the top right)

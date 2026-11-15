@@ -65,6 +65,13 @@ one round trip after the shot. Footsteps (yours, other players', guards' and sim
 games, from where they are; the original only plays them with one player, since split screen players
 share the speakers.
 
+### Other players' guns
+
+The other players' gun sounds (shots, reloads, drawing a weapon) come from where those players
+are, with distance and walls applied like any other sound in the level. The looping sounds of a few
+weapons (the Reaper's blades, the laser's stream, a Mauler charging) are not played for other
+players yet.
+
 ### Lobby, chat and scoreboard
 
 While you are connected and no match is running, a list of the connected players shows at the top
@@ -73,7 +80,8 @@ joined too late for. Joining players press `R` to switch their mark; the host st
 they like (the marks don't block it). The list also shows each player's ping.
 
 `T` opens a chat line, in the lobby and during a match: type, `Enter` sends, `Esc` cancels. In the
-lobby the chat window stays up at the bottom left; in a match the last lines show for ten seconds.
+lobby the chat window stays up at the bottom right; in a match the last lines show at the right
+edge for ten seconds.
 The console (`~`) still works for chat too.
 
 During a Combat Simulator match:

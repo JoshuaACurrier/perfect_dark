@@ -166,6 +166,7 @@ Also in `Options > Extended > Audio`, all on by default:
   (doors and objects don't count). Single screen only.
 * **Room Reverb** (`Audio.RoomReverb`, needs a restart): the sound effects' reverb is the diffuse network the music uses, instead of the original's
   single echo 100 ms later.
+* **Master Volume**: everything the game plays, from the moment it starts (the game's own Sound and Music volumes only apply once a save file is loaded). Default 70 (`Audio.MasterVolume`).
 * **Limiter** (`Audio.Limiter`): voices are mixed with 6 dB of headroom and the final mix goes through a limiter, so a loud mix is turned down for a moment
   instead of clipping.
 
