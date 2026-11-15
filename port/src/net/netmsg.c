@@ -219,8 +219,9 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 		}
 	}
 
-	if (g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME) {
-		// (between matches the host can still be sending about the last one)
+	if (g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME && g_NetCurMsgId != SVC_PROP_DAMAGE) {
+		// (between matches the host can still be sending about the last one; and damage to
+		// something that already blew up here is normal, each machine flies its own copy)
 		sysLogPrintf(LOG_WARNING, "NET: prop with syncid %u does not exist (message 0x%02x)", syncid, g_NetCurMsgId);
 	}
 	return NULL;

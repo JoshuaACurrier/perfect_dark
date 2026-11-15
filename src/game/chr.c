@@ -2157,6 +2157,20 @@ void chrUpdateCloak(struct chrdata *chr)
 		prevplayernum = g_Vars.currentplayernum;
 		setCurrentPlayerNum(playermgrGetPlayerNumByProp(chr->prop));
 
+#ifndef PLATFORM_N64
+		if (g_NetMode && g_Vars.currentplayer->isremote && g_Vars.currentplayer->client) {
+			// someone else's player: their own game runs the cloak (ammo, the pause after
+			// firing) and says in every move whether it is up
+			const bool want = (g_Vars.currentplayer->client->inmove[0].ucmd & UCMD_CLOAKED) != 0
+				&& !g_Vars.currentplayer->isdead;
+			if (want && !(chr->hidden & CHRHFLAG_CLOAKED)) {
+				chrCloak(chr, true);
+			} else if (!want && (chr->hidden & CHRHFLAG_CLOAKED)) {
+				chrUncloak(chr, true);
+			}
+		} else
+#endif
+		{
 		if (g_Vars.currentplayer->devicesactive & DEVICE_CLOAKDEVICE) {
 			// Cloak is active - but may or may not be in effect due to recent shooting
 			s32 qty = bgunGetReservedAmmoCount(AMMOTYPE_CLOAK);
@@ -2190,6 +2204,7 @@ void chrUpdateCloak(struct chrdata *chr)
 					&& (chr->hidden & CHRHFLAG_CLOAKED)) {
 				chrUncloak(chr, true);
 			}
+		}
 		}
 
 		setCurrentPlayerNum(prevplayernum);

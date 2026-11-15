@@ -506,6 +506,11 @@ void bmoveApplyMoveData(struct movedata *data)
 	// record some inputs if this is a local player
 	if (g_NetMode && !g_Vars.currentplayer->isremote) {
 		g_Vars.currentplayer->ucmd = 0;
+		if (g_Vars.currentplayer->prop && g_Vars.currentplayer->prop->chr
+				&& (g_Vars.currentplayer->prop->chr->hidden & CHRHFLAG_CLOAKED)) {
+			// our cloak is up: the other machines show us that way
+			g_Vars.currentplayer->ucmd |= UCMD_CLOAKED;
+		}
 		if (g_Vars.currentplayer->isdead) {
 			// the host has registered the death
 			g_Vars.currentplayer->netenvdeath = false;

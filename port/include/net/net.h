@@ -60,9 +60,10 @@
 #define UCMD_SECONDARY (1 << 10)
 #define UCMD_JUMP (1 << 11) // set while the player is in the air from a jump
 #define UCMD_ENVDEATH (1 << 12) // client: its player died to a death floor or a fall (the host doesn't run those for remote players)
+#define UCMD_CLOAKED (1 << 13) // this player is cloaked right now (their own game decides)
 #define UCMD_RESPAWN (1 << 27)
 #define UCMD_CHAT (1 << 28)
-#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_JUMP | UCMD_ENVDEATH)
+#define UCMD_IMPORTANT_MASK (UCMD_FIRE | UCMD_ACTIVATE | UCMD_RELOAD | UCMD_AIMMODE | UCMD_SELECT | UCMD_SELECT_DUAL | UCMD_JUMP | UCMD_ENVDEATH | UCMD_CLOAKED)
 #define UCMD_FL_FORCEPOS (1 << 29)
 #define UCMD_FL_FORCEANGLE (1 << 30)
 #define UCMD_FL_FORCEGROUND (1 << 31)

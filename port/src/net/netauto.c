@@ -59,6 +59,9 @@
 #include "lib/main.h"
 #include "system.h"
 #include "texpack.h"
+#include "net/netchr.h"
+#include "game/bondgun.h"
+#include "game/playermgr.h"
 
 extern u32 g_MixerSpatialBlocks; // mixer.c
 extern u32 g_MixerMuffledBlocks;
@@ -75,6 +78,8 @@ static s32 g_NetAutoStage = -1;
 static s32 g_NetAutoSims = -1;
 static s32 g_NetAutoSimDiff = BOTDIFF_NORMAL;
 static s32 g_NetAutoScenario = -1;
+static s32 g_NetAutoWeapon = -1;
+static s32 g_NetAutoAltFire = 0;
 static s32 g_NetAutoAimTest = 0;
 static s32 g_NetAutoCoopStage = -1;
 static s32 g_NetAutoDifficulty = 0;
@@ -113,6 +118,8 @@ void netAutoInit(void)
 	g_NetAutoSims = sysArgGetInt("--net-sims", -1);
 	g_NetAutoSimDiff = sysArgGetInt("--net-simdiff", BOTDIFF_NORMAL);
 	g_NetAutoScenario = sysArgGetInt("--net-scenario", -1);
+	g_NetAutoWeapon = sysArgGetInt("--net-weapon", -1);
+	g_NetAutoAltFire = sysArgCheck("--net-altfire");
 	g_NetAutoCoopStage = sysArgGetInt("--net-coop", -1);
 	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
@@ -215,6 +222,14 @@ static void netAutoStartMatch(void)
 
 	if (g_NetAutoScenario >= 0) {
 		g_MpSetup.scenario = g_NetAutoScenario;
+	}
+
+	if (g_NetAutoWeapon >= 0) {
+		// everyone spawns with this weapon; no score limit
+		g_MpSetup.options |= MPOPTION_SPAWNWITHWEAPON;
+		g_MpSetup.weapons[0] = g_NetAutoWeapon;
+		g_MpSetup.scorelimit = 100;
+		g_MpSetup.teamscorelimit = 400;
 	}
 
 	if (g_NetAutoAimTest) {
@@ -465,8 +480,12 @@ static void netAutoTickDump(void)
 		if (prop->type != PROPTYPE_WEAPON || !prop->syncid || !prop->weapon) {
 			continue;
 		}
-		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,0,-1,-1,0,0,0,%d,%d,%.2f\n",
+		// which way it points: heading and pitch of its z axis, in the theta and frame columns
+		const f32 *zaxis = prop->weapon->base.realrot[2];
+		const f32 flat = sqrtf(zaxis[0] * zaxis[0] + zaxis[2] * zaxis[2]);
+		fprintf(g_NetDumpFile, "%u,%u,%u,%.2f,%.2f,%.2f,%.4f,-1,-1,%.4f,0,0,%d,%d,%.2f\n",
 			g_NetTick, prop->syncid, prop->type, prop->pos.x, prop->pos.y, prop->pos.z,
+			atan2f(zaxis[0], zaxis[2]), atan2f(zaxis[1], flat),
 			prop->weapon->weaponnum, prop->rooms[0], (f64)sysGetMicroseconds() / 1000.0);
 	}
 
@@ -561,8 +580,45 @@ static void netAutoTickAlarm(void)
 	}
 }
 
+// --net-altfire: keep the local player's gun on its secondary function.
+// --net-weapon: log when anyone's cloak goes up or down, to compare between copies.
+static void netAutoTickWeaponTest(void)
+{
+	if (!g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME || !g_Vars.normmplayerisrunning
+			|| g_Vars.tickmode != TICKMODE_NORMAL) {
+		return;
+	}
+
+	if (g_NetAutoAltFire && g_Vars.players[0] && g_Vars.players[0]->prop && !g_Vars.players[0]->isdead
+			&& (g_NetTick % 30) == 0) {
+		const s32 prevplayernum = g_Vars.currentplayernum;
+		setCurrentPlayerNum(0);
+		if (!bgunIsUsingSecondaryFunction()) {
+			bgunConsiderToggleGunFunction(0, false, false, true);
+		}
+		setCurrentPlayerNum(prevplayernum);
+	}
+
+	if (g_NetAutoWeapon >= 0) {
+		static u8 cloaked[MAX_PLAYERS];
+		for (s32 i = 0; i < PLAYERCOUNT() && i < MAX_PLAYERS; ++i) {
+			const struct player *pl = g_Vars.players[i];
+			if (!pl || !pl->prop || !pl->prop->chr) {
+				continue;
+			}
+			const u8 now = (pl->prop->chr->hidden & CHRHFLAG_CLOAKED) != 0;
+			if (now != cloaked[i]) {
+				cloaked[i] = now;
+				sysLogPrintf(LOG_NOTE, "NET: cloak: prop %u %s at %.0f s", pl->prop->syncid, now ? "on" : "off",
+					(f64)netchrClock() / 60.0);
+			}
+		}
+	}
+}
+
 void netAutoTick(void)
 {
+	netAutoTickWeaponTest();
 	netAutoTickStart();
 	netAutoTickDump();
 	netAutoTickKill();
@@ -643,6 +699,10 @@ s32 netAutopilotRead(s32 idx, OSContPad *pad)
 		case 5: pad->stick_x = 80; break; // turn right
 		case 6: pad->button |= R_CBUTTONS; pad->stick_y = 60; break; // strafe
 		case 7: pad->stick_y = -80; break; // back up
+	}
+
+	if (g_NetAutoAltFire) {
+		pad->button |= R_TRIG; // aim mode, for alt functions that need it (FarSight target locator)
 	}
 
 	if (firing) {

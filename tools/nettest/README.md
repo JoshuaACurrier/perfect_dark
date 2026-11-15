@@ -8,6 +8,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `nettest.sh` | Starts a host and N clients with separate save dirs and logs, waits, kills them, prints the `NET:` log lines. `-d SECS` starts the last client late, to test joining mid-match. `-s` leaves sound on (it's off by default); at autoquit the log then says how many voice blocks went through the 3D audio path. |
 | `smooth.py` | How smoothly chrs move in a `--net-dump` file (dump with `--net-dump-interval 1`): speed spikes, back-and-forth jitter and distance travelled. Run it on the host's dump and a client's; the client's should look like the host's. |
 | `imgdiff.py` | Compares two screenshots of the same view (brightness, difference, a grid of what got brighter or darker), for checking what a video option changed. No image library needed. |
+| `rotcheck.py` | Do rockets point the same way on the host and a client? Compares the direction of each projectile in two `--net-dump` files made with `--net-dump-interval 1` (for weapon props the dump's theta and frame columns hold the heading and pitch). It also showed a rocket that existed twice on the client, by its sample counts. |
 | `desync.py` | Compares two `--net-dump` files (host vs client): how far apart every chr and loose gun is, plus props that only the client has or that vanished on one side. |
 | `audiocheck.py` | Checks captured audio for a glitch that repeats every mixer block (184 frames). Capture with `PD_AUDIO_CAPTURE=1 nettest.sh -s ...`, which writes `<name>/audio.raw` instead of playing; a clean capture's worst position is about 1.1x the median, a broken one was 18x. |
 | `winshot.ps1` | Screenshots each game window (not the desktop); skips hung windows. |
@@ -34,6 +35,8 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-lagbias TICKS` | Host: rewind TICKS 60ths more (negative: less) than measured. |
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
+| `--net-weapon N` | Host: everyone spawns with multiplayer weapon N (`MPWEAPON_*`, e.g. `0x17` rocket launcher, `0x0c` RCP-120, `0x15` FarSight) and there is no score limit. On any copy it also logs `NET: cloak: prop N on/off` when a player's cloak changes, to compare between copies. |
+| `--net-altfire` | Keeps the local player's gun on its secondary function and holds the aim button. |
 | `--net-desynctest` | Host: loses every other "this was picked up or removed" message. Client: deletes a loose gun after each resync. Gives the 10-second resync something to repair; the client logs `NET: resync repaired: ...` and the host `client N asked for ... missing gun(s)`. Without the flag a healthy match logs no repairs. |
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
 | `--net-teams` | Host: turn teams on for the auto-started match: the players and every other simulant against the rest. |

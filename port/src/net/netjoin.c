@@ -526,7 +526,7 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 			}
 			if (!initial) {
 				// dropped guns, thrown things, mines
-				if (prop->type == PROPTYPE_WEAPON && prop->weapon) {
+				if (prop->type == PROPTYPE_WEAPON && prop->weapon && !(prop->obj->flags & OBJFLAG_HELDROCKET)) {
 					netmsgSvcPropSpawnWrite(buf, prop);
 					++numspawned;
 				}
@@ -756,7 +756,12 @@ s32 netjoinTestLoseMessage(void)
 static inline bool netjoinIsLooseGun(const struct prop *prop)
 {
 	return prop->syncid > (u32)g_Vars.maxprops && !prop->parent && prop->obj && prop->type == PROPTYPE_WEAPON
-		&& prop->weapon && !(prop->obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING));
+		&& prop->weapon && !(prop->obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING))
+		// (the rocket sitting in a launcher is a prop of its own with no parent: not loose)
+		&& !(prop->obj->flags & OBJFLAG_HELDROCKET)
+		// (nor is anything still in flight: each machine flies its own copy of a rocket or a
+		// thrown thing, and they do not land or go off on the same frame)
+		&& !(prop->obj->hidden & OBJHFLAG_PROJECTILE);
 }
 
 // 0 closed, 1 open, 2 moving

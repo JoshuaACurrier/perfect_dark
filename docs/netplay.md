@@ -174,10 +174,12 @@ network tool would show. Loss is the share of the host's snapshots that never re
 
 ### Known issues
 
-* Clients see rocket rotation incorrectly.
 * Clients can't use Slayer fly-by-wire rockets and they will not correctly sync if the server uses them.
-* Clients can't use the alt fire mode on the FarSight and probably a couple other guns.
-* Cloaking device is not synced.
+* Clients can't use the alt fire mode on the FarSight and probably a couple other guns (not
+  reproduced or fixed yet).
+* Cloaking (the device and the RCP-120's) is decided by the cloaked player's own game and shown the
+  same on every machine. Rockets point the same way on every machine (checked with
+  `tools/nettest/rotcheck.py`: 0 degrees apart).
 * Most likely only Combat works properly.
 * With spare player slots in a match (see above), the original end-of-match screens may list the
   empty slots as players called "Open".
