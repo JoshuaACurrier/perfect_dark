@@ -30,6 +30,7 @@
 #include "types.h"
 #ifndef PLATFORM_N64
 #include "net/net.h"
+#include "net/netjoin.h"
 #include "fs.h"
 #include "system.h"
 #include "mpsetups.h"
@@ -226,6 +227,11 @@ void mpStartMatch(void)
 				g_MpSetup.chrslots |= (1 << slot);
 				++slot;
 			}
+		}
+		// spare player slots that nobody controls, for people who join during the match
+		for (s32 i = 0; i < netjoinSpareSlots() && slot < MAX_PLAYERS && slot < g_NetMaxClients; ++i) {
+			g_MpSetup.chrslots |= (1 << slot);
+			++slot;
 		}
 	}
 

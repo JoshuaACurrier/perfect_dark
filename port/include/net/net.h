@@ -5,7 +5,7 @@
 #include "constants.h"
 #include "net/netbuf.h"
 
-#define NET_PROTOCOL_VER 22
+#define NET_PROTOCOL_VER 23
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -115,6 +115,7 @@ struct netclient {
 	u16 ping; // everyone: round trip in ms, as the host measures it (0 for the host)
 	u8 loss; // everyone: packets lost on the way to this client, percent
 	u8 ready; // host: marked ready in the lobby (nethud.c)
+	u8 joinpending; // host: connected during a match and wants a player slot in it (netjoin.c)
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here

@@ -36,6 +36,7 @@
 #define SVC_MP_KILL       0x60 // someone killed someone (combat sim)
 #define SVC_MP_SCORES     0x61 // the whole scoreboard (sent when it changes)
 #define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)
+#define SVC_SLOT          0x64 // a player slot got a new owner mid-match, or lost it (netjoin.c)
 #define SVC_NETINFO       0x63 // who is connected: names, ping, packet loss, ready marks (nethud.c)
 
 #define CLC_BAD      0x00 // trash
@@ -60,6 +61,7 @@ u32 netmsgSvcAuthRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChatWrite(struct netbuf *dst, const char *str);
 u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcStageStartWrite(struct netbuf *dst);
+u32 netmsgSvcStageStartWriteJoin(struct netbuf *dst); // for a client joining mid-match
 u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcStageEndWrite(struct netbuf *dst);
 u32 netmsgSvcStageEndRead(struct netbuf *src, struct netclient *srccl);

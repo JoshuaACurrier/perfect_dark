@@ -15,6 +15,7 @@
 #include "net/netchr.h"
 #include "net/netlag.h"
 #include "net/nethud.h"
+#include "net/netjoin.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -239,7 +240,13 @@ u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl)
 	sysLogPrintf(LOG_NOTE, "NET: %s (%u) joined", srccl->settings.name, srccl->id);
 
 	if (g_NetLocalClient->state >= CLSTATE_GAME) {
-		netChatPrintf(NULL, "%s joined and will play from the next match", name);
+		if (g_NetServerJoinInProgress && g_Vars.normmplayerisrunning && g_Vars.coopplayernum < 0 && g_Vars.antiplayernum < 0) {
+			// gets a spare player slot if there is one (netjoin.c)
+			netChatPrintf(NULL, "%s connected", name);
+			netjoinServerRequest(srccl);
+		} else {
+			netChatPrintf(NULL, "%s joined and will play from the next match", name);
+		}
 	} else {
 		netChatPrintf(NULL, "%s joined", name);
 	}
@@ -297,6 +304,9 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 	}
 
 	srccl->outmoveack = outmoveack;
+
+	// someone who joined mid-match has finished loading
+	netjoinServerOnMove(srccl);
 
 	if (!src->error) {
 		netlagOnClientMove(srccl, viewtime, (f32)chrdelay / 8.f);
@@ -453,14 +463,23 @@ u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl)
 	return src->error;
 }
 
-u32 netmsgSvcStageStartWrite(struct netbuf *dst)
+static u32 netmsgSvcStageStartWriteImpl(struct netbuf *dst, const bool join)
 {
 	netbufWriteU8(dst, SVC_STAGE_START);
 
 	netbufWriteU32(dst, g_NetTick);
 
-	netbufWriteU64(dst, g_RngSeed);
-	netbufWriteU64(dst, g_Rng2Seed);
+	if (join) {
+		// someone joining mid-match loads the stage as it was at the start
+		u64 seed1, seed2;
+		netjoinGetSeeds(&seed1, &seed2);
+		netbufWriteU64(dst, seed1);
+		netbufWriteU64(dst, seed2);
+	} else {
+		netjoinSaveSeeds();
+		netbufWriteU64(dst, g_RngSeed);
+		netbufWriteU64(dst, g_Rng2Seed);
+	}
 
 	netbufWriteU8(dst, g_StageNum);
 
@@ -521,35 +540,54 @@ u32 netmsgSvcStageStartWrite(struct netbuf *dst)
 
 	// who the fuck is in the game: everyone past auth (g_NetNumClients also counts peers that
 	// are still connecting or were turned away, and those have no player config yet)
+	// (for a mid-match join: everyone who is in the match, with the body their slot was
+	// loaded with on the other machines)
+	const u32 minstate = join ? CLSTATE_GAME : CLSTATE_LOBBY;
 	u8 numingame = 0;
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
-		if (g_NetClients[i].state >= CLSTATE_LOBBY && g_NetClients[i].config) {
+		if (g_NetClients[i].state >= minstate && g_NetClients[i].config) {
 			++numingame;
 		}
 	}
 	netbufWriteU8(dst, numingame);
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *ncl = &g_NetClients[i];
-		if (ncl->state >= CLSTATE_LOBBY && ncl->config) {
+		if (ncl->state >= minstate && ncl->config) {
 			ncl->settings.team = ncl->config->base.team;
 			netbufWriteU8(dst, ncl->id);
 			netbufWriteU8(dst, ncl->playernum);
 			netbufWriteU8(dst, ncl->settings.team);
 			netbufWriteU16(dst, ncl->settings.options);
-			netbufWriteU8(dst, ncl->settings.bodynum);
-			netbufWriteU8(dst, ncl->settings.headnum);
+			netbufWriteU8(dst, join ? ncl->config->base.mpbodynum : ncl->settings.bodynum);
+			netbufWriteU8(dst, join ? ncl->config->base.mpheadnum : ncl->settings.headnum);
 			netbufWriteF32(dst, ncl->settings.fovy);
 			netbufWriteF32(dst, ncl->settings.fovzoommult);
 			netbufWriteStr(dst, ncl->settings.name);
-			memset(ncl->inmove, 0, sizeof(ncl->inmove));
-			memset(ncl->outmove, 0, sizeof(ncl->outmove));
-			ncl->lerpticks = 0;
-			ncl->outmoveack = 0;
-			ncl->state = CLSTATE_GAME;
+			if (!join) {
+				memset(ncl->inmove, 0, sizeof(ncl->inmove));
+				memset(ncl->outmove, 0, sizeof(ncl->outmove));
+				ncl->lerpticks = 0;
+				ncl->outmoveack = 0;
+				ncl->joinpending = 0;
+				ncl->state = CLSTATE_GAME;
+			}
 		}
 	}
 
+	// player slots nobody owns, and the match clock for a mid-match join
+	netjoinStageStartWrite(dst, join);
+
 	return dst->error;
+}
+
+u32 netmsgSvcStageStartWrite(struct netbuf *dst)
+{
+	return netmsgSvcStageStartWriteImpl(dst, false);
+}
+
+u32 netmsgSvcStageStartWriteJoin(struct netbuf *dst)
+{
+	return netmsgSvcStageStartWriteImpl(dst, true);
 }
 
 u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
@@ -648,6 +686,9 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 		struct netclient *ncl = &g_NetClients[id];
 		ncl->playernum = netbufReadU8(src);
 		ncl->settings.team = netbufReadU8(src);
+		if (ncl == g_NetLocalClient) {
+			netjoinSetMySvNum(ncl->playernum);
+		}
 		if (ncl != g_NetLocalClient) {
 			ncl->id = id;
 			ncl->settings.options = netbufReadU16(src);
@@ -674,6 +715,8 @@ u32 netmsgSvcStageStartRead(struct netbuf *src, struct netclient *srccl)
 		ncl->state = CLSTATE_GAME;
 		ncl->player = NULL;
 	}
+
+	netjoinStageStartRead(src);
 
 	if (src->error) {
 		return src->error;
@@ -945,7 +988,12 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	const s32 prevplayernum = g_Vars.currentplayernum;
 	setCurrentPlayerNum(actcl->playernum);
 
-	const bool newisdead = (flags & (1 << 0)) != 0;
+	bool newisdead = (flags & (1 << 0)) != 0;
+	if (actcl == g_NetLocalClient && netjoinClientAwaitingSpawn(newisdead)) {
+		// just joined mid-match: our slot's player is still down on the host until it
+		// lets us in. Don't show that as a death.
+		newisdead = pl->isdead;
+	}
 	if (!pl->isdead && newisdead) {
 		s16 shooter;
 		if (pl->prop->chr->lastshooter >= 0 && pl->prop->chr->timeshooter > 0) {
@@ -960,6 +1008,10 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 
 	const bool dualwielding = (flags & (1 << 1)) != 0;
 	if (!pl->isdead && (newweaponnum != pl->gunctrl.weaponnum || dualwielding != pl->gunctrl.dualwielding)) {
+		if (pl->isremote && newweaponnum > WEAPON_UNARMED && !invHasSingleWeaponIncAllGuns(newweaponnum)) {
+			// we never saw them pick it up (we joined later)
+			invGiveSingleWeapon(newweaponnum);
+		}
 		pl->gunctrl.dualwielding = dualwielding;
 		bgunEquipWeapon(newweaponnum);
 	}

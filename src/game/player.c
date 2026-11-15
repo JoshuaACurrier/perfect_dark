@@ -76,6 +76,7 @@
 #include "input.h"
 #include "string.h"
 #include "net/net.h"
+#include "net/netjoin.h"
 #include "system.h"
 #include "hudext.h"
 #include "net/netmsg.h"
@@ -4966,6 +4967,13 @@ Gfx *playerRenderHud(Gfx *gdl)
 						}
 #endif
 
+#ifndef PLATFORM_N64
+						// nobody plays this slot (or its new owner is still loading)
+						if (netjoinIsParked(g_Vars.currentplayernum)) {
+							canrestart = false;
+						}
+#endif
+
 						if (canrestart) {
 							g_Vars.currentplayer->dostartnewlife = true;
 						}
@@ -5094,7 +5102,13 @@ void playerDieByShooter(u32 shooter, bool force)
 		}
 #endif
 
-		if (g_Vars.mplayerisrunning) {
+#ifndef PLATFORM_N64
+		// (an empty player slot being put down isn't a death)
+		if (g_Vars.mplayerisrunning && !g_NetQuietDeath)
+#else
+		if (g_Vars.mplayerisrunning)
+#endif
+		{
 			mpstatsRecordDeath(shooter, g_Vars.currentplayernum);
 		}
 

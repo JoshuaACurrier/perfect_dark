@@ -12,6 +12,7 @@
 #include "net/netchr.h"
 #include "net/netlag.h"
 #include "net/nethud.h"
+#include "net/netjoin.h"
 #include "net/netcoop.h"
 #include "types.h"
 #include "constants.h"
@@ -712,6 +713,9 @@ static void netServerEvDisconnect(struct netclient *cl)
 {
 	sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: disconnect event from %s", netFormatClientAddr(cl));
 
+	// their player slot in a running match becomes free
+	netjoinServerOnLeave(cl);
+
 	if (cl->peer) {
 		enet_peer_reset(cl->peer);
 	}
@@ -811,6 +815,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_MP_SCORES: rc = netmsgSvcMpScoresRead(&cl->in, cl); break;
 			case SVC_HITMARK: rc = netmsgSvcHitmarkRead(&cl->in, cl); break;
 			case SVC_NETINFO: rc = nethudRosterRead(&cl->in, cl); break;
+			case SVC_SLOT: rc = netjoinSlotRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -853,6 +858,22 @@ void netStartFrame(void)
 	++g_NetTick;
 
 	const bool isClient = (g_NetMode == NETMODE_CLIENT);
+
+	// joined mid-match and the stage is up now: play back what the host sent meanwhile
+	if (isClient) {
+		u32 keptlen = 0;
+		u8 *kept;
+		while ((kept = netjoinClientNextPacket(&keptlen)) != NULL) {
+			netbufStartReadData(&g_NetLocalClient->in, kept, keptlen);
+			netClientEvReceive(g_NetLocalClient);
+			netbufReset(&g_NetLocalClient->in);
+			free(kept);
+			if (g_NetMode != NETMODE_CLIENT) {
+				return;
+			}
+		}
+	}
+
 	s32 polled = false;
 	ENetEvent ev = { .type = ENET_EVENT_TYPE_NONE };
 	while (!polled) {
@@ -889,7 +910,10 @@ void netStartFrame(void)
 				if (ev.peer) {
 					struct netclient *cl = (g_NetMode == NETMODE_CLIENT) ? g_NetLocalClient : enet_peer_get_data(ev.peer);
 					if (cl && cl->state) {
-						if (ev.packet->data && ev.packet->dataLength) {
+						if (isClient && netjoinClientKeepPacket(ev.packet->data, ev.packet->dataLength,
+								(ev.packet->flags & ENET_PACKET_FLAG_RELIABLE) != 0)) {
+							// loading the stage after a mid-match join: handled once it's up
+						} else if (ev.packet->data && ev.packet->dataLength) {
 							netbufStartReadData(&cl->in, ev.packet->data, ev.packet->dataLength);
 							if (isClient) {
 								netClientEvReceive(cl);
@@ -925,9 +949,14 @@ void netEndFrame(void)
 	// send whatever messages have accumulated so far
 	netFlushSendBuffers();
 
+	// empty player slots stay down; the host lets waiting clients into a running match
+	// (now, so that what it tells them comes after everything already sent)
+	netjoinTick();
+	netjoinServerTick();
+
 	if (g_NetLocalClient->state == CLSTATE_GAME && g_NetLocalClient->player && g_NetLocalClient->player->prop) {
 		if (g_NetMode == NETMODE_CLIENT) {
-			if (g_NetTick > 100) {
+			if (g_NetTick > 100 && !netjoinClientLoading()) {
 				netClientRecordMove(g_NetLocalClient, g_NetLocalClient->player);
 				const bool needrel = netClientNeedReliableMove(g_NetLocalClient);
 				if (needrel || netClientNeedMove(g_NetLocalClient)) {
@@ -1058,9 +1087,18 @@ void netPlayersAllocate(void)
 		g_NetClients[0].playernum = svplayernum;
 	}
 
+	for (s32 i = 0; i < MAX_PLAYERS; ++i) {
+		g_PlayerConfigsArray[i].client = NULL;
+	}
+
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *cl = &g_NetClients[i];
 		if (cl->state < CLSTATE_LOBBY) {
+			continue;
+		}
+
+		if (g_NetMode == NETMODE_CLIENT && cl->state < CLSTATE_GAME) {
+			// not in this match (the host listed who is)
 			continue;
 		}
 
@@ -1094,6 +1132,9 @@ void netPlayersAllocate(void)
 			cl->player->isremote = (cl != g_NetLocalClient);
 		}
 	}
+
+	// player slots without a client (spares for late joiners)
+	netjoinOnPlayersAllocated();
 }
 
 void netSyncIdsAllocate(void)
@@ -1108,6 +1149,7 @@ void netSyncIdsAllocate(void)
 
 	// don't allocate anything else if we're in lobby
 	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {
+		netjoinOnStageLoaded();
 		return;
 	}
 
@@ -1151,6 +1193,8 @@ void netSyncIdsAllocate(void)
 	}
 
 	sysLogPrintf(LOG_NOTE, "NET: last initial syncid: %u", g_NetNextSyncId);
+
+	netjoinOnStageLoaded();
 }
 
 void netChatPrintf(struct netclient *dst, const char *fmt, ...)
@@ -1240,5 +1284,7 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterInt("Net.UnlockAll", &g_NetUnlockAll, 0, 1);
 	configRegisterInt("Net.Server.LagCompensation", &g_NetLagComp, 0, 1);
 	configRegisterInt("Net.Server.LagCompensationMaxMs", &g_NetLagCompMaxMs, 0, 1000);
+	configRegisterInt("Net.Server.SpareSlots", &g_NetServerSpareSlots, 0, MAX_PLAYERS - 1);
+	configRegisterInt("Net.Server.JoinInProgress", &g_NetServerJoinInProgress, 0, 1);
 	configRegisterInt("Net.ShowPing", &g_NetShowPing, 0, 1);
 }

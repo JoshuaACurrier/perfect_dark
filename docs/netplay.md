@@ -25,9 +25,28 @@ Expect nothing to work right.
 4. The game will start automatically.
 5. After the game is over, press Enter/Start on the stats screen and you will be kicked back to the `Waiting for host` screen, at which point the process repeats from step 3.
 
-You can join while a match is already running. The screen then says `Match in progress`: you wait in the
-lobby (chat still works) and play from the next match the host starts. The host sees "joined and will play
-from the next match". Dropping straight into the running match isn't supported yet.
+### Joining and leaving a match that is running
+
+You can join a Combat Simulator match that has already started. The number of players in a match is
+fixed when its stage loads, so the host starts every match with a few spare player slots that nobody
+controls (`Net.Server.SpareSlots`, default 2, up to 8 players in all; an empty slot's player is kept
+dead and hidden on every machine and isn't on the scoreboard). When you connect during a match and a
+slot is free, your game loads the stage as it was at the start, the host sends what has changed since
+(who is alive and armed with what, pickups taken, guns lying around, open doors, lifts, the scores and
+the clock), and you spawn. It takes a few seconds; the others see "joined the match".
+
+When a player disconnects, their slot becomes empty again and the next person to connect, or the same
+person coming back, gets it. Their score starts from zero.
+
+Limits for now:
+
+* Combat Simulator only. In a co-op mission, or when no slot is free, you wait in the lobby (`Match in
+  progress`, chat still works) and play from the next match.
+* A late joiner looks like the slot's default character to the others until the next match.
+* Scenario state (the hill, flags, the briefcase holder and so on) and broken glass are not sent, so
+  those can look wrong for a late joiner in the scenarios that use them.
+* `Net.Server.JoinInProgress=0` on the host switches all of this off (no spare slots, late joiners
+  wait for the next match).
 
 ### Co-op missions (2 players)
 
@@ -141,6 +160,8 @@ network tool would show. Loss is the share of the host's snapshots that never re
 * Clients can't use the alt fire mode on the FarSight and probably a couple other guns.
 * Cloaking device is not synced.
 * Most likely only Combat works properly.
+* With spare player slots in a match (see above), the original end-of-match screens may list the
+  empty slots as players called "Open".
 * Simulants and guards are run by the host. Clients show them a little in the past (normally 2 to 6 frames,
   more on an uneven connection; `pd.log` has a `chr display delay` line every 30 s) on top of the ping, and
   smoothly in between the host's updates, at any frame rate.

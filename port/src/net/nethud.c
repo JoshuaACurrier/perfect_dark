@@ -25,6 +25,7 @@
 #include "net/netmsg.h"
 #include "net/netlag.h"
 #include "net/nethud.h"
+#include "net/netjoin.h"
 #include "console.h"
 #include "input.h"
 #include "system.h"
@@ -536,6 +537,22 @@ static Gfx *nethudRenderLobby(Gfx *gdl)
 	return gdl;
 }
 
+// the player rankings without the empty player slots kept for late joiners
+static s32 nethudPlayerRankings(struct ranking *rankings)
+{
+	const s32 num = mpGetPlayerRankings(rankings);
+	s32 out = 0;
+	for (s32 i = 0; i < num; ++i) {
+		if (!netjoinIsVacantConfig(rankings[i].mpchr)) {
+			if (out != i) {
+				rankings[out] = rankings[i];
+			}
+			++out;
+		}
+	}
+	return out;
+}
+
 static const struct mpchrconfig *nethudMyMpChr(void)
 {
 	if (g_Vars.players[0] && g_Vars.playerstats[0].mpindex >= 0) {
@@ -599,7 +616,7 @@ static Gfx *nethudRenderScoreBar(Gfx *gdl)
 			close = rankings[0].score >= limit - 2;
 		}
 	} else {
-		const s32 num = mpGetPlayerRankings(rankings);
+		const s32 num = nethudPlayerRankings(rankings);
 		if (num <= 0) {
 			return gdl;
 		}
@@ -693,7 +710,7 @@ static const struct netclient *nethudClientForMpChr(const struct mpchrconfig *mp
 static Gfx *nethudRenderScoreboard(Gfx *gdl)
 {
 	struct ranking rankings[MAX_MPCHRS];
-	const s32 num = mpGetPlayerRankings(rankings);
+	const s32 num = nethudPlayerRankings(rankings);
 	if (num <= 0) {
 		return gdl;
 	}

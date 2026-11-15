@@ -1,0 +1,726 @@
+// Joining a Combat Simulator match that is already running, and leaving one.
+// See netjoin.h for the idea.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "types.h"
+#include "data.h"
+#include "bss.h"
+#include "constants.h"
+#include "game/chr.h"
+#include "game/lv.h"
+#include "game/mplayer/mplayer.h"
+#include "game/player.h"
+#include "game/playermgr.h"
+#include "game/prop.h"
+#include "game/propobj.h"
+#include "system.h"
+#include "net/net.h"
+#include "net/netbuf.h"
+#include "net/netmsg.h"
+#include "net/netjoin.h"
+
+extern s32 g_StageTimeElapsed60;
+extern f32 g_StageTimeElapsed1f;
+
+s32 g_NetServerSpareSlots = 2;
+s32 g_NetServerJoinInProgress = 1;
+s32 g_NetQuietDeath = false;
+
+// by local player number
+static u8 g_Vacant[MAX_PLAYERS];
+static u8 g_Hold[MAX_PLAYERS]; // host: has a new owner who is still loading
+
+// body, head and team of the empty slots, by server player number (from the host)
+static u8 g_VacantMask = 0;
+static u8 g_VacantBody[MAX_PLAYERS];
+static u8 g_VacantHead[MAX_PLAYERS];
+static u8 g_VacantTeam[MAX_PLAYERS];
+
+static s32 g_MySvNum = 0;
+
+// host: what the stage looked like when the match started
+static u64 g_StartSeeds[2];
+static u8 *g_InitProps = NULL;         // 1 = this prop index held a prop at the start
+static struct coord *g_InitPos = NULL; // and where it was
+static s32 g_InitNum = 0;
+static u32 g_NextJoinTick = 0;
+
+// client: a mid-match join in progress
+#define LOAD_NONE    0
+#define LOAD_WAITING 1 // told to load, stage not up yet
+#define LOAD_READY   2 // stage is up, kept packets not played back yet
+
+struct keptpacket {
+	struct keptpacket *next;
+	u32 len;
+	u8 data[];
+};
+
+static s32 g_Loading = LOAD_NONE;
+static struct keptpacket *g_KeptHead = NULL;
+static struct keptpacket *g_KeptTail = NULL;
+static s32 g_JoinElapsed60 = 0;
+static u64 g_JoinStartUs = 0;
+static u32 g_LoadedFrame = 0;
+static s32 g_AwaitSpawn = false;
+
+static inline bool netjoinSlotInMatch(s32 p)
+{
+	return p >= 0 && p < MAX_PLAYERS && (g_MpSetup.chrslots & (1 << p)) && p < PLAYERCOUNT();
+}
+
+s32 netjoinSpareSlots(void)
+{
+	return (g_NetServerJoinInProgress && g_NetServerSpareSlots > 0) ? g_NetServerSpareSlots : 0;
+}
+
+s32 netjoinIsVacant(s32 playernum)
+{
+	return g_NetMode && playernum >= 0 && playernum < MAX_PLAYERS && g_Vacant[playernum];
+}
+
+s32 netjoinIsParked(s32 playernum)
+{
+	return g_NetMode && playernum >= 0 && playernum < MAX_PLAYERS && (g_Vacant[playernum] || g_Hold[playernum]);
+}
+
+s32 netjoinIsVacantConfig(const struct mpchrconfig *cfg)
+{
+	for (s32 i = 0; i < MAX_PLAYERS; ++i) {
+		if (cfg == &g_PlayerConfigsArray[i].base) {
+			return netjoinIsVacant(i);
+		}
+	}
+	return false;
+}
+
+void netjoinSetMySvNum(s32 svplayernum)
+{
+	g_MySvNum = svplayernum;
+}
+
+s32 netjoinLocalNum(s32 svplayernum)
+{
+	if (g_NetMode != NETMODE_CLIENT) {
+		return svplayernum;
+	}
+	if (svplayernum == g_MySvNum) {
+		return 0;
+	}
+	if (svplayernum == 0) {
+		return g_MySvNum;
+	}
+	return svplayernum;
+}
+
+/* the tail of SVC_STAGE_START */
+
+void netjoinSaveSeeds(void)
+{
+	g_StartSeeds[0] = g_RngSeed;
+	g_StartSeeds[1] = g_Rng2Seed;
+}
+
+void netjoinGetSeeds(u64 *seed1, u64 *seed2)
+{
+	*seed1 = g_StartSeeds[0];
+	*seed2 = g_StartSeeds[1];
+}
+
+void netjoinStageStartWrite(struct netbuf *dst, s32 join)
+{
+	// every player slot of the match that no client in the match owns
+	u8 mask = g_MpSetup.chrslots & 0xff;
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		const struct netclient *cl = &g_NetClients[i];
+		if (cl->state >= (join ? CLSTATE_GAME : CLSTATE_LOBBY) && (join || cl->config) && cl->playernum < MAX_PLAYERS) {
+			mask &= ~(1 << cl->playernum);
+		}
+	}
+
+	netbufWriteU8(dst, mask);
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (mask & (1 << p)) {
+			netbufWriteU8(dst, g_PlayerConfigsArray[p].base.mpbodynum);
+			netbufWriteU8(dst, g_PlayerConfigsArray[p].base.mpheadnum);
+			netbufWriteU8(dst, g_PlayerConfigsArray[p].base.team);
+		}
+	}
+
+	netbufWriteU8(dst, join ? 1 : 0);
+	if (join) {
+		netbufWriteS32(dst, g_StageTimeElapsed60);
+	}
+}
+
+void netjoinStageStartRead(struct netbuf *src)
+{
+	g_VacantMask = netbufReadU8(src);
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_VacantMask & (1 << p)) {
+			g_VacantBody[p] = netbufReadU8(src);
+			g_VacantHead[p] = netbufReadU8(src);
+			g_VacantTeam[p] = netbufReadU8(src);
+		}
+	}
+
+	const u8 join = netbufReadU8(src);
+	if (join) {
+		g_JoinElapsed60 = netbufReadS32(src);
+		g_JoinStartUs = sysGetMicroseconds();
+		g_Loading = LOAD_WAITING;
+		g_AwaitSpawn = true;
+		sysLogPrintf(LOG_NOTE, "NET: joining a match in progress (%d s in)", g_JoinElapsed60 / 60);
+	}
+}
+
+s32 netjoinClientAwaitingSpawn(s32 isdead)
+{
+	if (!g_AwaitSpawn) {
+		return false;
+	}
+	if (!isdead) {
+		g_AwaitSpawn = false;
+		return false;
+	}
+	return true;
+}
+
+/* empty slots */
+
+static void netjoinSetupVacant(s32 p)
+{
+	struct mpplayerconfig *cfg = &g_PlayerConfigsArray[p];
+	cfg->controlmode = CONTROLMODE_NA;
+	cfg->client = NULL;
+	cfg->handicap = 0x80;
+	cfg->options |= OPTION_ASKEDSAVEPLAYER;
+	snprintf(cfg->base.name, sizeof(cfg->base.name), "Open\n");
+	if (g_Vars.players[p]) {
+		g_Vars.players[p]->client = NULL;
+		g_Vars.players[p]->isremote = false;
+	}
+	g_Vacant[p] = 1;
+	g_Hold[p] = 0;
+}
+
+void netjoinOnPlayersAllocated(void)
+{
+	memset(g_Vacant, 0, sizeof(g_Vacant));
+	memset(g_Hold, 0, sizeof(g_Hold));
+
+	if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+		return;
+	}
+
+	u8 owned = 0;
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		const struct netclient *cl = &g_NetClients[i];
+		if (cl->state >= CLSTATE_LOBBY && cl->config && cl->playernum < MAX_PLAYERS) {
+			owned |= 1 << cl->playernum;
+		}
+	}
+
+	s32 num = 0;
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if ((g_MpSetup.chrslots & (1 << p)) && !(owned & (1 << p))) {
+			if (g_NetMode == NETMODE_CLIENT) {
+				// the same body on every machine
+				for (s32 sv = 0; sv < MAX_PLAYERS; ++sv) {
+					if ((g_VacantMask & (1 << sv)) && netjoinLocalNum(sv) == p) {
+						g_PlayerConfigsArray[p].base.mpbodynum = g_VacantBody[sv];
+						g_PlayerConfigsArray[p].base.mpheadnum = g_VacantHead[sv];
+						g_PlayerConfigsArray[p].base.team = g_VacantTeam[sv];
+					}
+				}
+			}
+			netjoinSetupVacant(p);
+			++num;
+		}
+	}
+
+	if (num) {
+		sysLogPrintf(LOG_NOTE, "NET: %d empty player slot(s) in this match", num);
+	}
+}
+
+void netjoinOnStageLoaded(void)
+{
+	free(g_InitProps);
+	free(g_InitPos);
+	g_InitProps = NULL;
+	g_InitPos = NULL;
+	g_InitNum = 0;
+	g_NextJoinTick = 0;
+
+	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {
+		g_Loading = LOAD_NONE;
+		g_AwaitSpawn = false;
+		return;
+	}
+
+	if (g_NetMode == NETMODE_SERVER) {
+		g_InitNum = g_Vars.maxprops;
+		g_InitProps = calloc(g_InitNum, 1);
+		g_InitPos = calloc(g_InitNum, sizeof(*g_InitPos));
+		if (!g_InitProps || !g_InitPos) {
+			g_InitNum = 0;
+			return;
+		}
+		for (s32 i = 0; i < g_InitNum; ++i) {
+			if (g_Vars.props[i].syncid == (u32)(i + 1)) {
+				g_InitProps[i] = 1;
+				g_InitPos[i] = g_Vars.props[i].pos;
+			}
+		}
+	} else if (g_Loading == LOAD_WAITING) {
+		g_Loading = LOAD_READY;
+		g_LoadedFrame = g_NetTick;
+	}
+}
+
+// keep an empty slot's player dead and out of sight
+static void netjoinPark(s32 p)
+{
+	struct player *pl = g_Vars.players[p];
+	if (!pl || !pl->prop || !pl->prop->chr) {
+		return;
+	}
+
+	pl->prop->chr->chrflags |= CHRCFLAG_HIDDEN;
+
+	if (!pl->isdead && g_Vars.tickmode == TICKMODE_NORMAL && g_Vars.lvframenum > 2) {
+		const s32 prevplayernum = g_Vars.currentplayernum;
+		setCurrentPlayerNum(p);
+		g_NetQuietDeath = true;
+		playerDieByShooter(p, true);
+		g_NetQuietDeath = false;
+		setCurrentPlayerNum(prevplayernum);
+	}
+
+	if (pl->isdead) {
+		pl->redbloodfinished = true;
+		pl->deathanimfinished = true;
+	}
+}
+
+void netjoinTick(void)
+{
+	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME || !g_Vars.normmplayerisrunning) {
+		return;
+	}
+
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_Vacant[p] && netjoinSlotInMatch(p)) {
+			netjoinPark(p);
+		}
+	}
+}
+
+/* SVC_SLOT */
+
+static void netjoinSlotWrite(struct netbuf *dst, s32 svplayernum, const struct netclient *cl)
+{
+	netbufWriteU8(dst, SVC_SLOT);
+	netbufWriteU8(dst, svplayernum);
+	netbufWriteU8(dst, cl ? cl->id : NET_NULL_CLIENT);
+	if (cl) {
+		netbufWriteStr(dst, cl->settings.name);
+	}
+}
+
+u32 netjoinSlotRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 sv = netbufReadU8(src);
+	const u8 clid = netbufReadU8(src);
+	const char *name = (clid != NET_NULL_CLIENT) ? netbufReadStr(src) : NULL;
+
+	if (src->error || srccl->state < CLSTATE_GAME || sv >= MAX_PLAYERS) {
+		return src->error;
+	}
+
+	const s32 p = netjoinLocalNum(sv);
+	if (!netjoinSlotInMatch(p) || !g_Vars.players[p]) {
+		return src->error;
+	}
+
+	// whoever had it before is gone
+	for (s32 i = 0; i < NET_MAX_CLIENTS; ++i) {
+		struct netclient *cl = &g_NetClients[i];
+		if (cl != g_NetLocalClient && cl->state && cl->player == g_Vars.players[p]) {
+			cl->state = CLSTATE_DISCONNECTED;
+			cl->player = NULL;
+			cl->config = NULL;
+		}
+	}
+
+	if (clid == NET_NULL_CLIENT) {
+		if (p != 0) {
+			netjoinSetupVacant(p);
+			sysLogPrintf(LOG_NOTE, "NET: player slot %d is now empty", p);
+		}
+		return src->error;
+	}
+
+	if (clid >= NET_MAX_CLIENTS || !name || &g_NetClients[clid] == g_NetLocalClient) {
+		// (our own slot: the stage start message already said so)
+		return src->error;
+	}
+
+	struct netclient *cl = &g_NetClients[clid];
+	struct mpplayerconfig *cfg = &g_PlayerConfigsArray[p];
+	cl->id = clid;
+	cl->state = CLSTATE_GAME;
+	cl->playernum = p;
+	cl->player = g_Vars.players[p];
+	cl->config = cfg;
+	strncpy(cl->settings.name, name, sizeof(cl->settings.name) - 1);
+	cl->settings.team = cfg->base.team;
+	memset(cl->inmove, 0, sizeof(cl->inmove));
+	memset(cl->outmove, 0, sizeof(cl->outmove));
+	cl->lerpticks = 0;
+	cfg->client = cl;
+	cfg->controlmode = CONTROLMODE_NA;
+	snprintf(cfg->base.name, sizeof(cfg->base.name), "%s\n", cl->settings.name);
+	cl->player->client = cl;
+	cl->player->isremote = true;
+	g_Vacant[p] = 0;
+	g_Hold[p] = 0;
+
+	sysLogPrintf(LOG_NOTE, "NET: %s (client %u) takes player slot %d", cl->settings.name, clid, p);
+
+	return src->error;
+}
+
+/* host */
+
+void netjoinServerRequest(struct netclient *cl)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetServerJoinInProgress) {
+		return;
+	}
+	cl->joinpending = 1;
+}
+
+void netjoinServerOnLeave(struct netclient *cl)
+{
+	if (g_NetMode != NETMODE_SERVER || cl->state < CLSTATE_GAME || !cl->player || !g_NetLocalClient
+			|| g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+
+	const s32 p = cl->playernum;
+	if (!netjoinSlotInMatch(p) || g_Vars.players[p] != cl->player) {
+		return;
+	}
+
+	if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+		if (cl->config) {
+			cl->config->client = NULL;
+		}
+		return;
+	}
+
+	netjoinSetupVacant(p);
+
+	// (sent at once: this runs while packets are being read, and the frame's message
+	// buffers are cleared after that)
+	u8 data[16];
+	struct netbuf buf = { NULL };
+	buf.data = data;
+	buf.size = sizeof(data);
+	netbufStartWrite(&buf);
+	netjoinSlotWrite(&buf, p, NULL);
+	netSend(NULL, &buf, true, NETCHAN_DEFAULT);
+	sysLogPrintf(LOG_NOTE, "NET: client %u left, player slot %d is now empty", cl->id, p);
+}
+
+void netjoinServerOnMove(struct netclient *cl)
+{
+	const s32 p = cl->playernum;
+	if (g_NetMode != NETMODE_SERVER || p >= MAX_PLAYERS || !g_Hold[p] || cl->player != g_Vars.players[p]) {
+		return;
+	}
+
+	// the new owner's game is up: let them in
+	g_Hold[p] = 0;
+	cl->player->dostartnewlife = true;
+	sysLogPrintf(LOG_NOTE, "NET: %s finished loading, spawning in slot %d", cl->settings.name, p);
+	netChatPrintf(NULL, "%s joined the match", cl->settings.name);
+}
+
+static u8 g_JoinBuf[16384];
+
+static void netjoinFlush(struct netclient *cl, struct netbuf *buf, u32 *total)
+{
+	if (buf->wp) {
+		*total += buf->wp;
+		netSend(cl, buf, true, NETCHAN_DEFAULT);
+	}
+}
+
+// the state of the world for someone who has just loaded the stage as it was at the start
+static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u32 *total)
+{
+	s32 numremoved = 0, numregen = 0, numspawned = 0, nummoved = 0, numdoors = 0;
+
+	// everyone else's health, weapon and whether they're alive
+	for (s32 i = 0; i < g_NetMaxClients; ++i) {
+		struct netclient *cl = &g_NetClients[i];
+		if (cl != joiner && cl->state >= CLSTATE_GAME && cl->player) {
+			netmsgSvcPlayerStatsWrite(buf, cl);
+		}
+	}
+
+	// things that were there at the start and aren't now
+	for (s32 i = 0; i < g_InitNum && i < g_Vars.maxprops; ++i) {
+		if (!g_InitProps[i]) {
+			continue;
+		}
+		const struct prop *prop = &g_Vars.props[i];
+		if (prop->syncid != (u32)(i + 1)) {
+			netbufWriteU8(buf, SVC_PROP_REMOVE);
+			netbufWriteU32(buf, i + 1);
+			netbufWriteU8(buf, 0);
+			++numremoved;
+		} else if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
+				&& (prop->obj->hidden & OBJHFLAG_GONE)) {
+			// picked up, waiting to come back
+			netbufWriteU8(buf, SVC_PROP_REMOVE);
+			netbufWriteU32(buf, i + 1);
+			netbufWriteU8(buf, (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0);
+			++numregen;
+		}
+		if (buf->wp > sizeof(g_JoinBuf) - 2048) {
+			netjoinFlush(joiner, buf, total);
+		}
+	}
+
+	// things in the world now
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		struct prop *prop = &g_Vars.props[i];
+		if (!prop->syncid || prop->parent || !prop->obj) {
+			continue;
+		}
+
+		const bool initial = (prop->syncid == (u32)(i + 1)) && i < g_InitNum && g_InitProps[i];
+
+		if (prop->type == PROPTYPE_DOOR) {
+			const struct doorobj *door = prop->door;
+			if (initial && (door->mode == DOORMODE_OPENING || door->mode == DOORMODE_WAITING
+					|| (door->mode == DOORMODE_IDLE && door->frac > 0.f))) {
+				// open here: open it there too, it closes again by itself like any door
+				netbufWriteU8(buf, SVC_PROP_DOOR);
+				netbufWriteU32(buf, prop->syncid);
+				netbufWriteU8(buf, NET_NULL_CLIENT);
+				netbufWriteS8(buf, DOORMODE_OPENING);
+				netbufWriteU32(buf, door->base.flags);
+				netbufWriteU32(buf, door->base.hidden);
+				++numdoors;
+			}
+		} else if (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON) {
+			if (prop->obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING)) {
+				continue;
+			}
+			if (!initial) {
+				// dropped guns, thrown things, mines
+				if (prop->type == PROPTYPE_WEAPON && prop->weapon) {
+					netmsgSvcPropSpawnWrite(buf, prop);
+					++numspawned;
+				}
+			} else if (prop->obj->type == OBJTYPE_LIFT) {
+				netmsgSvcPropLiftWrite(buf, prop);
+			} else {
+				const f32 dx = prop->pos.x - g_InitPos[i].x;
+				const f32 dy = prop->pos.y - g_InitPos[i].y;
+				const f32 dz = prop->pos.z - g_InitPos[i].z;
+				if (dx * dx + dy * dy + dz * dz > 4.f || (prop->obj->hidden & OBJHFLAG_PROJECTILE)) {
+					netmsgSvcPropMoveWrite(buf, prop, NULL);
+					++nummoved;
+				}
+			}
+		}
+
+		if (buf->wp > sizeof(g_JoinBuf) - 2048) {
+			netjoinFlush(joiner, buf, total);
+		}
+	}
+
+	netmsgSvcMpScoresWrite(buf);
+	netjoinFlush(joiner, buf, total);
+
+	sysLogPrintf(LOG_NOTE, "NET: snapshot for client %u: %d removed, %d waiting to regen, %d spawned, %d moved, %d doors open, %u bytes",
+		joiner->id, numremoved, numregen, numspawned, nummoved, numdoors, *total);
+}
+
+static s32 netjoinFindSlot(void)
+{
+	for (s32 p = 1; p < MAX_PLAYERS; ++p) {
+		if (g_Vacant[p] && !g_Hold[p] && netjoinSlotInMatch(p) && g_Vars.players[p] && g_Vars.players[p]->prop) {
+			return p;
+		}
+	}
+	return -1;
+}
+
+static void netjoinServerJoin(struct netclient *cl, s32 p)
+{
+	struct mpplayerconfig *cfg = &g_PlayerConfigsArray[p];
+	struct player *pl = g_Vars.players[p];
+
+	g_Vacant[p] = 0;
+	g_Hold[p] = 1;
+
+	cl->playernum = p;
+	cl->player = pl;
+	cl->config = cfg;
+	cl->settings.team = cfg->base.team;
+	memset(cl->inmove, 0, sizeof(cl->inmove));
+	memset(cl->outmove, 0, sizeof(cl->outmove));
+	cl->lerpticks = 0;
+	cl->outmoveack = 0;
+	cl->inmovetick = 0;
+	cl->forcetick = 0;
+	cl->laginit = 0;
+	cl->joinpending = 0;
+	cl->state = CLSTATE_GAME;
+
+	cfg->client = cl;
+	cfg->controlmode = CONTROLMODE_NA;
+	snprintf(cfg->base.name, sizeof(cfg->base.name), "%s\n", cl->settings.name);
+	// a fresh score for the slot
+	func0f187838(&cfg->base);
+
+	pl->client = cl;
+	pl->isremote = true;
+
+	sysLogPrintf(LOG_NOTE, "NET: %s (client %u) joins the running match in player slot %d", cl->settings.name, cl->id, p);
+
+	struct netbuf buf = { NULL };
+	buf.data = g_JoinBuf;
+	buf.size = sizeof(g_JoinBuf);
+	netbufStartWrite(&buf);
+
+	// the stage start goes in a packet of its own: the joiner keeps everything after it
+	// until its stage is up
+	u32 total = 0;
+	netmsgSvcStageStartWriteJoin(&buf);
+	netjoinFlush(cl, &buf, &total);
+
+	netjoinWriteSnapshot(cl, &buf, &total);
+
+	// tell everyone (the joiner ignores its own)
+	netjoinSlotWrite(&g_NetMsgRel, p, cl);
+}
+
+void netjoinServerTick(void)
+{
+	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+
+	if (!g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0
+			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 60 || g_NetTick < g_NextJoinTick) {
+		return;
+	}
+
+	for (s32 i = 1; i < g_NetMaxClients; ++i) {
+		struct netclient *cl = &g_NetClients[i];
+		if (cl->state == CLSTATE_LOBBY && cl->joinpending && cl->peer) {
+			const s32 p = netjoinFindSlot();
+			if (p < 0) {
+				break;
+			}
+			netjoinServerJoin(cl, p);
+			// one at a time
+			g_NextJoinTick = g_NetTick + 30;
+			break;
+		}
+	}
+}
+
+/* client: packets that arrive while the stage loads */
+
+s32 netjoinClientLoading(void)
+{
+	return g_Loading != LOAD_NONE;
+}
+
+s32 netjoinClientKeepPacket(const u8 *data, u32 len, s32 reliable)
+{
+	if (g_NetMode != NETMODE_CLIENT || g_Loading == LOAD_NONE) {
+		return false;
+	}
+
+	if (!reliable || !len) {
+		return true; // positions and such: newer ones will follow
+	}
+
+	struct keptpacket *kp = malloc(sizeof(*kp) + len);
+	if (kp) {
+		kp->next = NULL;
+		kp->len = len;
+		memcpy(kp->data, data, len);
+		if (g_KeptTail) {
+			g_KeptTail->next = kp;
+		} else {
+			g_KeptHead = kp;
+		}
+		g_KeptTail = kp;
+	}
+
+	return true;
+}
+
+u8 *netjoinClientNextPacket(u32 *len)
+{
+	if (g_NetMode != NETMODE_CLIENT) {
+		// left the game while loading
+		while (g_KeptHead) {
+			struct keptpacket *kp = g_KeptHead;
+			g_KeptHead = kp->next;
+			free(kp);
+		}
+		g_KeptTail = NULL;
+		g_Loading = LOAD_NONE;
+		return NULL;
+	}
+
+	if (g_Loading != LOAD_READY) {
+		return NULL;
+	}
+
+	// give the stage a few frames so every player has spawned
+	if (g_NetTick < g_LoadedFrame + 5 || g_Vars.tickmode != TICKMODE_NORMAL || !g_NetLocalClient->player
+			|| !g_NetLocalClient->player->prop) {
+		return NULL;
+	}
+
+	if (g_JoinElapsed60 >= 0) {
+		// the match clock, counting the time the load took
+		const s32 loadticks = (s32)((sysGetMicroseconds() - g_JoinStartUs) * 60 / 1000000);
+		g_StageTimeElapsed60 = g_JoinElapsed60 + loadticks;
+		g_StageTimeElapsed1f = g_StageTimeElapsed60;
+		g_JoinElapsed60 = -1;
+		sysLogPrintf(LOG_NOTE, "NET: stage is up after %d ticks, applying the snapshot", loadticks);
+	}
+
+	struct keptpacket *kp = g_KeptHead;
+	if (!kp) {
+		g_KeptTail = NULL;
+		g_Loading = LOAD_NONE;
+		sysLogPrintf(LOG_NOTE, "NET: joined the match");
+		return NULL;
+	}
+
+	g_KeptHead = kp->next;
+	u8 *data = malloc(kp->len ? kp->len : 1);
+	if (data) {
+		memcpy(data, kp->data, kp->len);
+		*len = kp->len;
+	}
+	free(kp);
+	return data;
+}
