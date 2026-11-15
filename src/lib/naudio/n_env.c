@@ -364,13 +364,13 @@ Acmd *_pullSubFrame(N_PVoice *filter, s16 *inp, s16 *outp, s32 outCount, Acmd *p
 		n_aSetVolume(ptr++, A_RIGHT | A_VOL, e->em_rtgt, e->em_rratm,  e->em_rratl);
 		n_aSetVolume(ptr++, A_RATE, e->em_ltgt, e->em_lratm, e->em_lratl);
 #ifndef PLATFORM_N64
-		mixerSetSpatial(e->em_az, e->em_azreset);
+		mixerSetSpatial(e->em_az, e->em_azreset, e->em_muffle);
 		e->em_azreset = 0;
 #endif
 		n_aEnvMixer (ptr++, A_INIT, e->em_cvolR, osVirtualToPhysical(e->em_state));
 	} else {
 #ifndef PLATFORM_N64
-		mixerSetSpatial(e->em_az, e->em_azreset);
+		mixerSetSpatial(e->em_az, e->em_azreset, e->em_muffle);
 		e->em_azreset = 0;
 #endif
 		n_aEnvMixer(ptr++, A_CONTINUE, 0, osVirtualToPhysical(e->em_state));

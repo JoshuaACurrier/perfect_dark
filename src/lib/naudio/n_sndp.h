@@ -49,8 +49,10 @@ typedef enum {
 	AL_SNDP_1000_EVT  = 0x1000,
 	AL_SNDP_FXBUS_EVT = 0x2000,
 	AL_SNDP_4000_EVT  = 0x4000,
-	AL_SNDP_AZIMUTH_EVT = 0x8000 // PC: direction for binaural rendering, see em_az
+	AL_SNDP_AZIMUTH_EVT = 0x8000 // PC: direction for binaural rendering, see em_az; or, with SNDP_MUFFLE_FLAG, the muffle amount
 } ALSndpMsgType;
+
+#define SNDP_MUFFLE_FLAG 0x40000000 // in AL_SNDP_AZIMUTH_EVT's data: the low byte is a muffle amount, not a direction
 
 typedef struct {
 	N_ALVoice     voice;

@@ -137,11 +137,72 @@ void aLoadADPCMImpl(int num_entries_times_16, const int16_t *book_source_addr) {
     memcpy(rspa.adpcm_table, book_source_addr, num_entries_times_16);
 }
 
+/*
+ * Final mix level.
+ *
+ * Every voice is mixed at half level (MIX_HEADROOM_SHIFT), so the buses can hold a
+ * mix twice as loud as full scale before they saturate. The level is restored here,
+ * through a limiter: when the mix would go over full scale its gain is pulled down
+ * quickly and let back up slowly, instead of the peaks being chopped off, which is
+ * what made busy firefights crackle. The mix is delayed by LIM_LOOKAHEAD samples
+ * (1.5 ms) so the gain is already down when a peak arrives.
+ */
+#define MIX_HEADROOM_SHIFT 1
+#define LIM_LOOKAHEAD 32
+#define LIM_THRESHOLD 29200.f // -1 dB
+#define LIM_ATTACK 0.2f       // per sample: there within the lookahead
+#define LIM_RELEASE 0.0003f   // per sample: about 150 ms
+
+int g_MixerLimiter = 1;               // Audio.Limiter
+uint32_t g_MixerLimitedSamples = 0;   // output samples the limiter turned down
+uint32_t g_MixerClippedSamples = 0;   // output samples that still hit full scale
+uint32_t g_MixerOutputSamples = 0;
+
+static void mixerFinalLevel(int16_t *d, int nframes) {
+    static float ring[LIM_LOOKAHEAD][2];
+    static int pos = 0;
+    static float gain = 1.f;
+    const float up = (float)(1 << MIX_HEADROOM_SHIFT);
+
+    for (int i = 0; i < nframes; ++i) {
+        const float l = (float)d[i * 2] * up;
+        const float r = (float)d[i * 2 + 1] * up;
+        float outl, outr;
+
+        if (g_MixerLimiter) {
+            const float peak = fabsf(l) > fabsf(r) ? fabsf(l) : fabsf(r);
+            const float want = peak > LIM_THRESHOLD ? LIM_THRESHOLD / peak : 1.f;
+            gain += (want - gain) * (want < gain ? LIM_ATTACK : LIM_RELEASE);
+            outl = ring[pos][0] * gain;
+            outr = ring[pos][1] * gain;
+            ring[pos][0] = l;
+            ring[pos][1] = r;
+            pos = (pos + 1) % LIM_LOOKAHEAD;
+            if (gain < 0.98f) {
+                ++g_MixerLimitedSamples;
+            }
+        } else {
+            outl = l;
+            outr = r;
+            gain = 1.f;
+        }
+
+        if (outl > 32767.f || outl < -32768.f || outr > 32767.f || outr < -32768.f) {
+            ++g_MixerClippedSamples;
+        }
+        d[i * 2] = clamp16((int32_t)outl);
+        d[i * 2 + 1] = clamp16((int32_t)outr);
+    }
+    g_MixerOutputSamples += nframes;
+}
+
 void aInterleaveImpl(void) {
     const int16_t *l = BUF_S16(OFS_MAIN_L);
     const int16_t *r = BUF_S16(OFS_MAIN_R);
     int count = ROUND_UP_16(NUM_SAMPLES) / 8;
     int16_t *d = BUF_S16(OFS_BASE);
+    int16_t *const dstart = d;
+    const int nframes = count * 8;
     while (count > 0) {
         int16_t l0 = *l++;
         int16_t l1 = *l++;
@@ -177,6 +238,7 @@ void aInterleaveImpl(void) {
         *d++ = r7;
         --count;
     }
+    mixerFinalLevel(dstart, nframes);
 }
 
 void aDMEMMoveImpl(uint16_t in_addr, uint16_t out_addr, int nbytes) {
@@ -545,17 +607,64 @@ struct binvoice {
     struct binear ear[2];
     float ring[BIN_RING];
     uint32_t pos;
+    // muffling (see mixerSetSpatial): two one-pole low passes in a row
+    int mprimed;
+    float mcoef;       // current filter coefficient, 1 = wide open
+    float mlp[2];
 };
 
 static struct binvoice binvoices[BIN_MAX_VOICES];
 static uint32_t bin_frame = 0;
 static int bin_az = -1;    // direction for the next aEnvMixer call, -1 = plain stereo
 static int bin_reset = 0;
+static int bin_muffle = 0; // how muffled the next aEnvMixer call's voice is, 0..255
 uint32_t g_MixerSpatialBlocks = 0; // voice blocks rendered binaurally, for the test tools
 
-void mixerSetSpatial(int azimuth, int reset) {
+void mixerSetSpatial(int azimuth, int reset, int muffle) {
     bin_az = azimuth;
     bin_reset = reset;
+    bin_muffle = muffle;
+}
+
+uint32_t g_MixerMuffledBlocks = 0; // voice blocks low passed, for the test tools
+
+// Low pass the voice's samples in place. muffle 0 = untouched, 255 = behind thick walls
+// (cut off around 600 Hz). The cutoff glides over the block.
+static void muffleFilter(struct binvoice *v, int muffle, int16_t *in, int nsamples) {
+    // cutoff falls from the top of the band by up to ~4 octaves
+    const float cutoff = 10500.f * powf(2.f, -4.2f * (float)muffle / 255.f);
+    const float target = muffle > 0 ? 1.f - expf(-2.f * BIN_PI * cutoff / BIN_SAMPLE_RATE) : 1.f;
+
+    if (!v->mprimed) {
+        v->mprimed = 1;
+        v->mcoef = target;
+        v->mlp[0] = v->mlp[1] = (float)in[0];
+    }
+
+    if (muffle <= 0 && v->mcoef > 0.999f) {
+        // wide open and staying there: keep the state following the signal
+        v->mcoef = 1.f;
+        v->mlp[0] = v->mlp[1] = (float)in[nsamples - 1];
+        return;
+    }
+
+    ++g_MixerMuffledBlocks;
+    const float dcoef = (target - v->mcoef) / (float)nsamples;
+    for (int i = 0; i < nsamples; ++i) {
+        // (the buffer's sample order doesn't matter to the caller: it is processed in time order here)
+#ifdef PLATFORM_BIG_ENDIAN
+        const int idx = i;
+#else
+        const int idx = i ^ 1;
+#endif
+        v->mcoef += dcoef;
+        v->mlp[0] += v->mcoef * ((float)in[idx] - v->mlp[0]);
+        v->mlp[1] += v->mcoef * (v->mlp[0] - v->mlp[1]);
+        in[idx] = (int16_t)v->mlp[1];
+    }
+    for (int k = 0; k < 2; ++k) {
+        if (fabsf(v->mlp[k]) < 1e-20f) v->mlp[k] = 0.f;
+    }
 }
 
 static struct binvoice *binFindVoice(void *key) {
@@ -606,18 +715,9 @@ static inline float binAngleDist(float a, float b) {
 }
 
 // in: mono samples; vol: per-sample mono gain (Q15) already worked out by the caller
-static void binauralMix(void *key, int az, int reset, const int16_t *in, const int16_t *monogain,
+static void binauralMix(struct binvoice *v, int az, const int16_t *in, const int16_t *monogain,
         int16_t *dryl, int16_t *dryr, int16_t *wetl, int16_t *wetr, int16_t voldry, int16_t volwet, int nsamples, int xor) {
-    struct binvoice *v = binFindVoice(key);
-    v->used = ++bin_frame;
     ++g_MixerSpatialBlocks;
-
-    if (reset) {
-        void *k = v->key;
-        memset(v, 0, sizeof(*v));
-        v->key = k;
-        v->used = bin_frame;
-    }
 
     // azimuth: 0 = ahead, clockwise, 128 steps a turn. Ears at +-90 degrees.
     const float angle = (float)(az & 0x7f) * (2.f * BIN_PI / 128.f);
@@ -658,8 +758,9 @@ static void binauralMix(void *key, int az, int reset, const int16_t *in, const i
 
     int16_t *dry[2] = { dryl, dryr };
     int16_t *wet[2] = { wetl, wetr };
-    const float fdry = (float)voldry * (1.f / 32768.f);
-    const float fwet = (float)volwet * (1.f / 32768.f);
+    // (half level: see MIX_HEADROOM_SHIFT)
+    const float fdry = (float)voldry * (1.f / 32768.f) / (float)(1 << MIX_HEADROOM_SHIFT);
+    const float fwet = (float)volwet * (1.f / 32768.f) / (float)(1 << MIX_HEADROOM_SHIFT);
 
     for (int i = 0; i < nsamples; ++i) {
         const int idx = i ^ xor;
@@ -722,12 +823,27 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
 
     rspa.vol[1] = rvol; // why the fuck is this here?
 
-    // direction for this voice, if it has one (see mixerSetSpatial)
+    // direction and muffling for this voice, if it has them (see mixerSetSpatial)
     const int spatial_az = bin_az;
     const int spatial_reset = bin_reset;
+    const int muffle = bin_muffle;
     int16_t monogain[NUM_SAMPLES];
     bin_az = -1;
     bin_reset = 0;
+    bin_muffle = 0;
+
+    struct binvoice *bv = NULL;
+    if (spatial_az >= 0 || muffle > 0) {
+        bv = binFindVoice((void *)state);
+        if (spatial_reset) {
+            // the voice just started: forget whatever used this slot before
+            void *k = bv->key;
+            memset(bv, 0, sizeof(*bv));
+            bv->key = k;
+        }
+        bv->used = ++bin_frame;
+        muffleFilter(bv, muffle, in, nsamples);
+    }
 
     // naudio uses a linear envelope
     // TODO: sse/neon
@@ -784,10 +900,11 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
         outptr[2] = wet[0] + (i^XOR);
         outptr[3] = wet[1] + (i^XOR);
 
-        gain[0] = clamp16((vol[0] * voldry + 0x4000) >> 15);
-        gain[1] = clamp16((vol[1] * voldry + 0x4000) >> 15);
-        gain[2] = clamp16((vol[0] * volwet + 0x4000) >> 15);
-        gain[3] = clamp16((vol[1] * volwet + 0x4000) >> 15);
+        // (half level: see MIX_HEADROOM_SHIFT)
+        gain[0] = clamp16((vol[0] * voldry + 0x4000) >> (15 + MIX_HEADROOM_SHIFT));
+        gain[1] = clamp16((vol[1] * voldry + 0x4000) >> (15 + MIX_HEADROOM_SHIFT));
+        gain[2] = clamp16((vol[0] * volwet + 0x4000) >> (15 + MIX_HEADROOM_SHIFT));
+        gain[3] = clamp16((vol[1] * volwet + 0x4000) >> (15 + MIX_HEADROOM_SHIFT));
 
         const int16_t insamp = in[i^XOR];
         for (int j = 0; j < 4; ++j) {
@@ -796,7 +913,7 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t rvol) {
     }
 
     if (spatial_az >= 0) {
-        binauralMix((void *)state, spatial_az, spatial_reset, in, monogain,
+        binauralMix(bv, spatial_az, in, monogain,
             dry[0], dry[1], wet[0], wet[1], voldry, volwet, nsamples, XOR);
     }
 

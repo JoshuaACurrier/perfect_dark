@@ -40,4 +40,9 @@ s32 psGetDuration60(s32 channelnum);
 extern s32 g_SndRearDampen;
 #endif
 
+#ifndef PLATFORM_N64
+// how much of the sound at pos is out of the listener's sight: 0, 0.5 or 1; -1 if unknown
+f32 psGetOcclusion(struct coord *pos, RoomNum *rooms);
+#endif
+
 #endif

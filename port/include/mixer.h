@@ -35,7 +35,11 @@ void aEnvMixerImpl(uint8_t flags, ENVMIX_STATE state, int16_t some_vol);
 // The next aEnvMixer call renders its voice binaurally from this direction instead of with
 // its left/right volumes. azimuth: 0..127 for 0..360 degrees clockwise from straight ahead,
 // or -1 for plain stereo. reset: the voice has just started (forget the filter history).
-void mixerSetSpatial(int azimuth, int reset);
+// muffle: 0 = clear .. 255 = heavily low passed (a sound behind walls or far away).
+void mixerSetSpatial(int azimuth, int reset, int muffle);
+
+// the final mix goes through a limiter instead of clipping (Audio.Limiter)
+extern int g_MixerLimiter;
 extern uint32_t g_MixerSpatialBlocks;
 void aSetVolumeImpl(uint8_t flags, int16_t v, int16_t t, int16_t r);
 void aPoleFilterImpl(uint8_t flags, int16_t gain, uint32_t t, uint32_t addr);

@@ -1527,6 +1527,45 @@ static MenuItemHandlerResult menuhandlerHrtf(s32 operation, struct menuitem *ite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerOcclusion(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_SndOcclusion;
+	case MENUOP_SET:
+		g_SndOcclusion = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerRoomReverb(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_SndRoomReverb;
+	case MENUOP_SET:
+		g_SndRoomReverb = data->checkbox.value; // read when the audio starts
+		break;
+	}
+
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerLimiter(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_MixerLimiter;
+	case MENUOP_SET:
+		g_MixerLimiter = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedAudioMenuItems[] = {
 	{
 		MENUITEMTYPE_CHECKBOX,
@@ -1535,6 +1574,30 @@ struct menuitem g_ExtendedAudioMenuItems[] = {
 		(uintptr_t)"3D Audio (Headphones)",
 		0,
 		menuhandlerHrtf,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Muffle Sounds Behind Walls",
+		0,
+		menuhandlerOcclusion,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Room Reverb (Needs Restart)",
+		0,
+		menuhandlerRoomReverb,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Limiter (No Crackle When Loud)",
+		0,
+		menuhandlerLimiter,
 	},
 	{
 		MENUITEMTYPE_CHECKBOX,

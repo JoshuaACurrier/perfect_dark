@@ -19,6 +19,7 @@
 #include "net/net.h"
 #include "net/netmsg.h"
 #include "hudext.h"
+#include "game/propsnd.h"
 #include "system.h"
 #include "video.h"
 
@@ -337,6 +338,12 @@ Gfx *hudextDrawTeamNames(Gfx *gdl)
 
 		char name[MAX_PLAYERNAME + 1];
 		hudextCopyName(name, sizeof(name), rawname);
+
+		if (g_NetAutoDebugHud) {
+			// for screenshots: what the sound muffling makes of this character
+			const f32 occ = psGetOcclusion(&prop->pos, prop->rooms);
+			snprintf(name, sizeof(name), "%s", occ < 0.f ? "?" : (occ == 0.f ? "CLEAR" : (occ < 1.f ? "HALF" : "HIDDEN")));
+		}
 
 		if (!started) {
 			gdl = text0f153628(gdl);

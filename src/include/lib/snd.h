@@ -46,6 +46,10 @@ void sndTickUfo(void);
 #ifndef PLATFORM_N64
 extern s32 g_SndHrtf;
 extern s16 g_SndNextAzimuth;
+extern s32 g_SndOcclusion;
+extern s16 g_SndNextMuffle;
+extern s32 g_SndRoomReverb;
+void sndSetMuffle(struct sndstate *handle, s32 muffle);
 #endif
 
 #endif

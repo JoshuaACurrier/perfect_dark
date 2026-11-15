@@ -49,6 +49,12 @@
 #include "texpack.h"
 
 extern u32 g_MixerSpatialBlocks; // mixer.c
+extern u32 g_MixerMuffledBlocks;
+extern u32 g_MixerLimitedSamples;
+extern u32 g_MixerClippedSamples;
+extern u32 g_MixerOutputSamples;
+extern u32 g_PsOcclusionTests;   // propsnd.c
+extern u32 g_PsOccludedTests;
 
 s32 g_NetAutopilot = 0;
 
@@ -334,6 +340,10 @@ static void netAutoTickQuit(void)
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
 		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
+		sysLogPrintf(LOG_NOTE, "NET: muffling: %u line-of-sight tests, %u found the sound out of sight; %u voice blocks low passed",
+			g_PsOcclusionTests, g_PsOccludedTests, g_MixerMuffledBlocks);
+		sysLogPrintf(LOG_NOTE, "NET: final mix: %u samples out, limiter turned down %u, still clipped %u",
+			g_MixerOutputSamples, g_MixerLimitedSamples, g_MixerClippedSamples);
 		sysLogPrintf(LOG_NOTE, "NET: frames in game: %u, of which %u took 30 ms or longer; longest %u ms",
 			g_NetAutoFrames, g_NetAutoSlowFrames, g_NetAutoWorstFrameMs);
 		sysLogPrintf(LOG_NOTE, "NET: texture pack: %u images decoded in the background, slowest %u ms, %u draws with the original while waiting",

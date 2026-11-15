@@ -2033,6 +2033,7 @@ struct sndstate {
 #endif
 #ifndef PLATFORM_N64
 	s16 azimuth; // direction for binaural rendering (0..127 = 0..360 degrees clockwise), -1 = none
+	s16 muffle;  // how muffled it is (behind walls, far away), 0..255
 #endif
 };
 
@@ -5485,6 +5486,11 @@ struct pschannel {
 	/*0x64*/ RoomNum rooms[8];
 #if VERSION >= VERSION_NTSC_1_0
 	/*0x74*/ u32 uuid;
+#endif
+#ifndef PLATFORM_N64
+	f32 occlusion;   // 0 = in the open .. 1 = nothing of it in sight, smoothed
+	s16 muffle;      // what the voice was last told (see psCalculateMuffle), -1 = nothing yet
+	s16 wetboost;    // extra reverb for it being far away or out of sight
 #endif
 };
 

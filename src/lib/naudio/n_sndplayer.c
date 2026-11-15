@@ -5,6 +5,7 @@
 #include "lib/snd.h"
 #ifndef PLATFORM_N64
 void n_alSynSetAzimuth(N_ALVoice *v, s16 azimuth);
+void n_alSynSetMuffle(N_ALVoice *v, s16 muffle);
 #endif
 #include "lib/lib_317f0.h"
 #include "bss.h"
@@ -254,6 +255,9 @@ void _n_handleEvent(N_ALSndpEvent *event)
 			n_alSynSetAzimuth(&state->voice, state->azimuth);
 #endif
 			n_alSynStartVoiceParams(&state->voice, sound->wavetable, state->pitch * state->basepitch, vol, pan, fxmix, 0, 0, 0, delta);
+#ifndef PLATFORM_N64
+			n_alSynSetMuffle(&state->voice, state->muffle); // (the voice exists from here on)
+#endif
 			state->state = AL_PLAYING;
 			var8005f130++;
 
@@ -352,6 +356,16 @@ void _n_handleEvent(N_ALSndpEvent *event)
 			break;
 #ifndef PLATFORM_N64
 		case AL_SNDP_AZIMUTH_EVT:
+			if ((event->common.unk08 & 0xc0000000) == SNDP_MUFFLE_FLAG) {
+				// the same event carries the muffle amount (see sndSetMuffle)
+				state->muffle = event->common.unk08 & 0xff;
+
+				if (state->state == AL_PLAYING) {
+					n_alSynSetMuffle(&state->voice, state->muffle);
+				}
+				break;
+			}
+
 			state->azimuth = (s16)event->common.unk08;
 
 			if (state->state == AL_PLAYING) {
@@ -629,6 +643,7 @@ struct sndstate *func00033390(s32 arg0, ALSound *sound)
 		state->vol = 0x7fff;
 #ifndef PLATFORM_N64
 		state->azimuth = -1;
+		state->muffle = 0;
 #endif
 
 		if (g_SndpAddRefCallback != NULL) {
@@ -743,6 +758,7 @@ struct sndstate *func00033820(s32 arg0, s16 soundnum, u16 vol, ALPan pan, f32 pi
 				state->pan = abspan;
 #ifndef PLATFORM_N64
 				state->azimuth = g_SndNextAzimuth;
+				state->muffle = g_SndNextMuffle;
 #endif
 				state->vol = (u32)(vol * state->vol) >> 15;
 				state->pitch *= pitch;

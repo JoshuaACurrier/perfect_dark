@@ -157,6 +157,15 @@ and below. It's made for headphones; on speakers turn it off. Music, speech and 
 With it off, `Sounds Behind You Quieter` (`Audio.RearSoundDampen`, percent, default 30) makes sounds behind you a little quieter instead,
 since plain stereo can't tell front from back.
 
+Also in `Options > Extended > Audio`, all on by default:
+* **Muffle Sounds Behind Walls** (`Audio.Occlusion`): a positional sound loses its treble when level geometry is between it and you (more so when the way round
+  through the doorways is long), and a little when it is far away; it also gets some extra reverb. Line of sight is tested from the camera, against the level only
+  (doors and objects don't count). Single screen only.
+* **Room Reverb** (`Audio.RoomReverb`, needs a restart): the sound effects' reverb is the diffuse network the music uses, instead of the original's
+  single echo 100 ms later.
+* **Limiter** (`Audio.Limiter`): voices are mixed with 6 dB of headroom and the final mix goes through a limiter, so a loud mix is turned down for a moment
+  instead of clipping.
+
 Aim feel (`Options > Extended > Mouse / Controller`): **Aim Sensitivity** scales mouse look while aiming, **Raw Input** (on by default) bypasses Windows pointer speed and acceleration, **Look Curve** sets the controller look response (Original = the game's squared curve, down to Linear), and **Aim Assist** sets how far auto-aim pulls the crosshair (needs the game's Auto-Aim option on).
 
 ## Building

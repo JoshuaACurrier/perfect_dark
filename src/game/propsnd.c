@@ -11,6 +11,7 @@
 #include "game/pad.h"
 #include "bss.h"
 #include "lib/snd.h"
+#include "lib/collision.h"
 #include "lib/rng.h"
 #include "lib/mtx.h"
 #include "lib/lib_317f0.h"
@@ -217,6 +218,11 @@ s32 psGetSubtitleOpacity(s32 channelnum)
 	return 0;
 }
 
+#ifndef PLATFORM_N64
+static void psCalculateMuffle(struct coord *pos, RoomNum *rooms, f32 pathdist, f32 dist3, bool test,
+		f32 *occlusion, s32 *muffle, s32 *wetboost);
+#endif
+
 void psTickChannel(s32 channelnum)
 {
 	struct pschannel *channel = &g_PsChannels[channelnum];
@@ -292,6 +298,25 @@ void psTickChannel(s32 channelnum)
 			channel->targetfx = 0;
 			channel->fxbus = 1;
 		}
+
+#ifndef PLATFORM_N64
+		// muffle it and add reverb if it's out of sight or far away
+		s32 newmuffle = 0;
+
+		if (pos && rooms && (channel->flags & PSFLAG_ISMP3) == 0
+				&& (g_Vars.langfilteron && (channel->flags2 & PSFLAG2_OFFENSIVE)) == 0
+				&& (channel->flags2 & PSFLAG2_0010) == 0) {
+			// the line of sight is tried when the sound starts and every fourth frame after
+			const bool test = (channel->flags & PSFLAG_FIRSTTICK) || channel->occlusion < 0.0f
+				|| ((g_Vars.lvframenum + channelnum) & 3) == 0;
+			s32 wetboost = 0;
+
+			psCalculateMuffle(pos, rooms, channel->distance, channel->dist3, test,
+					&channel->occlusion, &newmuffle, &wetboost);
+			channel->wetboost = wetboost;
+			channel->targetfx = wetboost;
+		}
+#endif
 
 		if (channel->audiohandle != NULL && channel->targetpitch > 0.0f) {
 			if (channel->currentpitch < 0.0f) {
@@ -431,6 +456,15 @@ void psTickChannel(s32 channelnum)
 			}
 		}
 
+#ifndef PLATFORM_N64
+		// (a pan change makes sndAdjust set the reverb amount too: give it the current one, not none)
+		if (newfx == -1 && channel->currentfx > 0) {
+			newfx = channel->currentfx;
+		}
+
+		g_SndNextMuffle = newmuffle; // for a voice started below
+#endif
+
 		/**
 		 * Handle starting, restarting or adjusting the audio.
 		 */
@@ -463,11 +497,23 @@ void psTickChannel(s32 channelnum)
 				}
 
 				channel->flags &= ~PSFLAG_FIRSTTICK;
+#ifndef PLATFORM_N64
+				channel->muffle = newmuffle;
+#endif
 			} else {
 				sndAdjust(&channel->audiohandle, channel->flags & PSFLAG_ISMP3, newvol, newpan,
 						channel->soundnum26, newpitch, channel->fxbus, newfx, channel->flags & PSFLAG_CHANGINGPAN);
+#ifndef PLATFORM_N64
+				if (newmuffle != channel->muffle && channel->audiohandle != NULL) {
+					channel->muffle = newmuffle;
+					sndSetMuffle(channel->audiohandle, newmuffle);
+				}
+#endif
 			}
 		}
+#ifndef PLATFORM_N64
+		g_SndNextMuffle = 0;
+#endif
 	} else {
 		/**
 		 * The channel doesn't need to tick any more.
@@ -756,6 +802,11 @@ s16 psCreate(struct pschannel *channel, struct prop *prop, s16 soundnum, s16 pad
 	channel->currentvol = -1;
 	channel->currentpan = -1;
 	channel->currentfx = -1;
+#ifndef PLATFORM_N64
+	channel->occlusion = -1.0f;
+	channel->muffle = -1;
+	channel->wetboost = 0;
+#endif
 	channel->targetvol = (vol != -1) ? vol : -1;
 	channel->targetpan = AL_PAN_CENTER;
 	channel->targetfx = 0;
@@ -1233,6 +1284,132 @@ s32 psCalculateVol(struct coord *pos, f32 dist1, f32 dist2, f32 dist3, RoomNum *
 #endif
 }
 
+#ifndef PLATFORM_N64
+/**
+ * How much of the sound at pos is out of the listener's sight: 0 (in the open),
+ * 0.5 or 1 (nothing of it in sight), or -1 if it can't be told. Two lines are
+ * tried, to the sound and to a point above it, so a low ledge or a step between
+ * you and a guard doesn't count as a wall.
+ */
+static f32 psTestOcclusion(struct coord *pos, RoomNum *rooms, f32 *straightdist)
+{
+	struct player *player = g_Vars.players[0];
+	RoomNum camrooms[2];
+	struct coord dir;
+	struct coord target;
+	f32 dist;
+	s32 blocked = 0;
+	s32 i;
+
+	if (!player || !pos || !rooms || rooms[0] == -1 || player->cam_room < 0) {
+		return -1.0f;
+	}
+
+	dir.x = player->cam_pos.x - pos->x;
+	dir.y = player->cam_pos.y - pos->y;
+	dir.z = player->cam_pos.z - pos->z;
+	dist = sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+	*straightdist = dist;
+
+	if (dist < 150.0f) {
+		return 0.0f; // right here (or the player's own sound)
+	}
+
+	camrooms[0] = player->cam_room;
+	camrooms[1] = -1;
+
+	for (i = 0; i < 2; i++) {
+		// Aim a little short of the sound: things that make sounds (terminals, lights,
+		// alarms) are often set into a wall, which would hide them from themselves.
+		const f32 back = (dist > 200.0f ? 40.0f : dist * 0.2f) / dist;
+
+		target.x = pos->x + dir.x * back;
+		target.y = pos->y + dir.y * back + (i ? 90.0f : 0.0f);
+		target.z = pos->z + dir.z * back;
+
+		if (!cdTestLos05(&player->cam_pos, camrooms, &target, rooms, CDTYPE_BG,
+					GEOFLAG_WALL | GEOFLAG_BLOCK_SIGHT | GEOFLAG_BLOCK_SHOOT)) {
+			blocked++;
+		}
+	}
+
+	return blocked * 0.5f;
+}
+
+/**
+ * For the test tools (--net-hudtest labels characters with it).
+ */
+f32 psGetOcclusion(struct coord *pos, RoomNum *rooms)
+{
+	f32 dist;
+	return psTestOcclusion(pos, rooms, &dist);
+}
+
+u32 g_PsOcclusionTests = 0;  // for the test tools
+u32 g_PsOccludedTests = 0;
+
+/**
+ * Works out how muffled a positional sound should be (0..255, see mixerSetSpatial)
+ * and how much reverb to add to it (0..127, on top of the sound's own), from how
+ * much of it is out of sight (*occlusion, kept between calls and smoothed) and how
+ * far away it is. pathdist is the distance sound has to travel through the rooms,
+ * which psCalculateVol works out; dist3 is where the sound becomes inaudible.
+ */
+static void psCalculateMuffle(struct coord *pos, RoomNum *rooms, f32 pathdist, f32 dist3, bool test,
+		f32 *occlusion, s32 *muffle, s32 *wetboost)
+{
+	f32 straight = 0.0f;
+	f32 amount;
+	f32 far = 0.0f;
+	f32 detour = 0.0f;
+
+	*muffle = 0;
+	*wetboost = 0;
+
+	if (!g_SndOcclusion || LOCALPLAYERCOUNT() != 1 || !pos) {
+		*occlusion = 0.0f;
+		return;
+	}
+
+	if (test) {
+		const f32 now = psTestOcclusion(pos, rooms, &straight);
+
+		if (now >= 0.0f) {
+			g_PsOcclusionTests++;
+
+			if (now > 0.0f) {
+				g_PsOccludedTests++;
+			}
+
+			// (a negative value means "no reading yet": take the first one as it is)
+			*occlusion = *occlusion < 0.0f ? now : *occlusion + (now - *occlusion) * 0.5f;
+
+			// the long way round: the sound's path through doorways against a straight line
+			if (now > 0.0f && straight > 1.0f && pathdist < dist3) {
+				detour = (pathdist / straight - 1.3f) / 1.5f;
+				detour = detour < 0.0f ? 0.0f : (detour > 1.0f ? 1.0f : detour);
+			}
+		}
+	}
+
+	if (*occlusion < 0.0f) {
+		return;
+	}
+
+	// far away: the air takes the top off too
+	if (dist3 > 0.0f) {
+		far = (pathdist / dist3 - 0.35f) / 0.65f;
+		far = far < 0.0f ? 0.0f : (far > 1.0f ? 1.0f : far);
+	}
+
+	amount = *occlusion * (0.45f + 0.25f * detour) + far * 0.22f;
+	amount = amount > 1.0f ? 1.0f : amount;
+
+	*muffle = (s32)(amount * 255.0f);
+	*wetboost = (s32)(*occlusion * 20.0f + far * 24.0f);
+}
+#endif
+
 s32 psCalculatePan3(s32 degrees, f32 arg1, struct pschannel *channel)
 {
 	s32 result;
@@ -1537,7 +1714,23 @@ void psApplyVolPan(struct sndstate *handle, struct coord *pos, f32 dist1, f32 di
 	vol = psCalculateVol(pos, dist1, dist2, dist3, rooms, soundnum, arg7, distanceptr);
 	pan = psCalculatePan(pos, dist1, dist2, dist3, *distanceptr, sp50, 0);
 
+#ifndef PLATFORM_N64
+	{
+		// (no channel to keep the smoothed value in: this one is tried every call)
+		f32 occlusion = -1.0f;
+		s32 muffle = 0;
+		s32 wetboost = 0;
+
+		if (rooms && !sndIsMp3(soundnum)) {
+			psCalculateMuffle(pos, rooms, *distanceptr, dist3, true, &occlusion, &muffle, &wetboost);
+		}
+
+		sndAdjust(&handle, sndIsMp3(soundnum), vol, pan, soundnum, 1.0f, 1, wetboost > 0 ? wetboost : -1, 1);
+		sndSetMuffle(handle, muffle);
+	}
+#else
 	sndAdjust(&handle, sndIsMp3(soundnum), vol, pan, soundnum, 1.0f, 1, -1, 1);
+#endif
 }
 
 s32 psGetRandomSparkSound(void)

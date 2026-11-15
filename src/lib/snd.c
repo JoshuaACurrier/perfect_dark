@@ -91,6 +91,26 @@ s32 g_SndHrtf = 1;
 s16 g_SndNextAzimuth = -1; // for the state(s) the next func00033820 call creates
 
 /**
+ * Muffling: a positional sound that is behind walls or far away is low passed
+ * (propsnd works out how much, the mixer filters the voice).
+ */
+s32 g_SndOcclusion = 1;
+s16 g_SndNextMuffle = 0;   // for the state(s) the next func00033820 call creates
+
+/**
+ * The effects' reverb. 0: the original, a single echo 100 ms later that repeats.
+ * 1: a room reverb, the network the music uses. Read when the audio starts.
+ */
+s32 g_SndRoomReverb = 1;
+
+void sndSetMuffle(struct sndstate *handle, s32 muffle)
+{
+	if (handle != NULL) {
+		audioPostEvent(handle, (s16)AL_SNDP_AZIMUTH_EVT, SNDP_MUFFLE_FLAG | (muffle & 0xff));
+	}
+}
+
+/**
  * If the pan carries a direction, return it and turn the pan into the plain
  * left/right position for that direction (still used for speech and as the
  * voice's nominal pan). Otherwise return -1.
@@ -1490,6 +1510,9 @@ void sndInit(void)
 
 #ifdef PLATFORM_64BIT
 	heaplen = 1024 * 745;
+#endif
+#ifndef PLATFORM_N64
+	heaplen += 1024 * 64; // the effects' room reverb has longer delay lines (g_SndRoomReverb)
 #endif
 
 	g_Vars.langfilteron = false;

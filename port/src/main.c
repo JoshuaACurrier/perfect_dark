@@ -190,6 +190,9 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Game.DisableMpDeathMusic", &g_MusicDisableMpDeath, 0, 1);
 	configRegisterInt("Audio.RearSoundDampen", &g_SndRearDampen, 0, 100);
 	configRegisterInt("Audio.Headphones3D", &g_SndHrtf, 0, 1);
+	configRegisterInt("Audio.Occlusion", &g_SndOcclusion, 0, 1);
+	configRegisterInt("Audio.RoomReverb", &g_SndRoomReverb, 0, 1);
+	configRegisterInt("Audio.Limiter", &g_MixerLimiter, 0, 1);
 	configRegisterInt("Game.GEMuzzleFlashes", &g_BgunGeMuzzleFlashes, 0, 1);
 	configRegisterInt("Game.MaxExplosions", &g_MaxExplosions, 6, 96);
 	configRegisterInt("Video.TexturePacks", &g_TexpackEnabled, 0, 1);

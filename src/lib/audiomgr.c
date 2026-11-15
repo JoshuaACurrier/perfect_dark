@@ -5,6 +5,7 @@
 #include "constants.h"
 #include "bss.h"
 #include "lib/audiodma.h"
+#include "lib/snd.h"
 #include "lib/lib_2fc60.h"
 #include "lib/profile.h"
 #include "lib/libc/ll.h"
@@ -138,6 +139,13 @@ void amgrCreate(ALSynConfig *config)
 		if (g_SndMaxFxBusses >= 2) {
 			for (i = 1; i < g_SndMaxFxBusses; i++) {
 				config->params[i] = (s32 *) (IS4MB() ? sp198 : sp068);
+#ifndef PLATFORM_N64
+				// sp068 is one echo 100 ms later, fed back on itself. The music's network
+				// (eight sections, a diffuse tail) sounds like a room instead.
+				if (g_SndRoomReverb && !IS4MB()) {
+					config->params[i] = (s32 *) sp090;
+				}
+#endif
 			}
 		}
 #ifndef AVOID_UB

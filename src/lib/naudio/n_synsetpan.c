@@ -37,4 +37,15 @@ void n_alSynSetAzimuth(N_ALVoice *v, s16 azimuth)
 		v->pvoice->em_az = azimuth;
 	}
 }
+
+/**
+ * How muffled the voice is: 0 (clear) to 255 (behind thick walls). Takes effect
+ * right away; the mixer smooths the change.
+ */
+void n_alSynSetMuffle(N_ALVoice *v, s16 muffle)
+{
+	if (v->pvoice) {
+		v->pvoice->em_muffle = muffle;
+	}
+}
 #endif

@@ -81,6 +81,7 @@ typedef struct N_PVoice_s {
 #ifndef PLATFORM_N64
 	s16		        em_az;      // direction for binaural rendering (0..127 = 0..360 degrees), -1 = none
 	s16		        em_azreset; // the voice just started
+	s16		        em_muffle;  // how muffled it is (behind walls, far away), 0..255
 #endif
 	s16		        em_volume;
 	s16		        em_cvolL;
