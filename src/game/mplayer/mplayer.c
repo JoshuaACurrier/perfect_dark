@@ -574,7 +574,7 @@ void mpPlayerSetDefaults(s32 playernum, bool autonames)
 		challengeDetermineUnlockedFeatures();
 	}
 
-	for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray); i++) {
+	for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray[playernum].gunfuncs); i++) {
 		g_PlayerConfigsArray[playernum].gunfuncs[i] = 0;
 	}
 }
@@ -622,7 +622,7 @@ void mpInit(bool resetplayers)
 	strcpy(g_MpSetup.name, "");
 
 	if (resetplayers) {
-		for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray); i++) {
+		for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray[playernum].gunfuncs); i++) {
 			mpPlayerSetDefaults(i, false);
 		}
 	}
@@ -650,7 +650,7 @@ void mpInit(bool resetplayers)
 
 	challengeForceUnlockBotFeatures();
 
-	for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray); i++) {
+	for (i = 0; i < ARRAYCOUNT(g_PlayerConfigsArray[playernum].gunfuncs); i++) {
 		for (j = 0; j < ARRAYCOUNT(g_PlayerConfigsArray[i].gunfuncs); j++) {
 			g_PlayerConfigsArray[i].gunfuncs[j] = 0;
 		}

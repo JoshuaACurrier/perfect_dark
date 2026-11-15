@@ -60,6 +60,10 @@ OUT_W="$(winpath "$PD_OUT")"
 
 PIDS=()
 
+kill_ours() {
+	powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='$(basename "$PD_EXE")'\" | Where-Object { \$_.CommandLine -like '*--savedir $OUT_W*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" > /dev/null 2>&1
+}
+
 launch() {
 	local name="$1"; shift
 	mkdir -p "$PD_OUT/$name"
@@ -104,7 +108,9 @@ done
 for p in "${PIDS[@]}"; do
 	kill "$p" 2>/dev/null
 done
-taskkill //F //IM "$(basename "$PD_EXE")" > /dev/null 2>&1
+# Anything of ours that survived that: only the copies started with our save dirs, never
+# a game someone is playing on this PC from another folder.
+kill_ours
 
 for d in host $(seq -f "client%g" 1 "$NCLIENTS"); do
 	echo "===== $d ====="

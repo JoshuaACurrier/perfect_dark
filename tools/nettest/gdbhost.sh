@@ -13,6 +13,7 @@ sleep 8
 ("$ROOT/build/pd.x86_64.exe" --basedir "$D" --savedir "$D/nettest/client1" --logfile "$D/nettest/client1/pd.log" \
 	--no-sound --connect 127.0.0.1 ${PD_CLIENT_ARGS:-} > /dev/null 2>&1 &)
 sleep $((T - 6))
-taskkill //F //IM pd.x86_64.exe > /dev/null 2>&1
+# only the test copies (their save dirs are under nettest), not a game being played from elsewhere
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"name='pd.x86_64.exe' or name='gdb.exe'\" | Where-Object { \$_.CommandLine -like '*nettest*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" > /dev/null 2>&1
 sleep 1
 grep -v "Thread\|loading segment" "$OUT" | sed -n '/^NET\|^#\|signal\|SIG/,$p' | head -60

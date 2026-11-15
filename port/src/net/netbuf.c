@@ -28,8 +28,9 @@ s32 netbufReadLeft(const struct netbuf *buf)
 static inline u32 netbufCanRead(struct netbuf *buf, const u32 num)
 {
 	if (buf->error || buf->rp + num > buf->wp) {
-		sysLogPrintf(LOG_ERROR, "NET: could not read %u bytes", num);
-		__builtin_trap();
+		if (!buf->error) {
+			sysLogPrintf(LOG_ERROR, "NET: could not read %u bytes", num);
+		}
 		buf->error = 1;
 		return false;
 	}

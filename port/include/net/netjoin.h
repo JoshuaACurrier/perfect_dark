@@ -18,6 +18,9 @@
 extern s32 g_NetServerSpareSlots;     // Net.Server.SpareSlots
 extern s32 g_NetServerJoinInProgress; // Net.Server.JoinInProgress
 
+// forget everything about the last connection (starting or leaving a network game)
+void netjoinReset(void);
+
 // how many spare slots the match that's about to start gets (host)
 s32 netjoinSpareSlots(void);
 

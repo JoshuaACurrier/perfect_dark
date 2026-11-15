@@ -63,7 +63,9 @@ static struct keptpacket *g_KeptHead = NULL;
 static struct keptpacket *g_KeptTail = NULL;
 static s32 g_JoinElapsed60 = 0;
 static u64 g_JoinStartUs = 0;
-static u32 g_LoadedFrame = 0;
+static u32 g_LoadedTick = 0;
+
+static void netjoinResyncReset(void);
 static s32 g_AwaitSpawn = false;
 
 static inline bool netjoinSlotInMatch(s32 p)
@@ -113,6 +115,32 @@ s32 netjoinLocalNum(s32 svplayernum)
 		return g_MySvNum;
 	}
 	return svplayernum;
+}
+
+void netjoinReset(void)
+{
+	while (g_KeptHead) {
+		struct keptpacket *kp = g_KeptHead;
+		g_KeptHead = kp->next;
+		free(kp);
+	}
+	g_KeptTail = NULL;
+	g_Loading = LOAD_NONE;
+	g_AwaitSpawn = false;
+
+	free(g_InitProps);
+	free(g_InitPos);
+	g_InitProps = NULL;
+	g_InitPos = NULL;
+	g_InitNum = 0;
+
+	// (g_NetTick starts over with every connection)
+	g_NextJoinTick = 0;
+	netjoinResyncReset();
+
+	memset(g_Vacant, 0, sizeof(g_Vacant));
+	memset(g_Hold, 0, sizeof(g_Hold));
+	g_VacantMask = 0;
 }
 
 /* the tail of SVC_STAGE_START */
@@ -254,6 +282,7 @@ void netjoinOnStageLoaded(void)
 	g_InitPos = NULL;
 	g_InitNum = 0;
 	g_NextJoinTick = 0;
+	netjoinResyncReset();
 
 	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {
 		g_Loading = LOAD_NONE;
@@ -277,7 +306,7 @@ void netjoinOnStageLoaded(void)
 		}
 	} else if (g_Loading == LOAD_WAITING) {
 		g_Loading = LOAD_READY;
-		g_LoadedFrame = g_NetTick;
+		g_LoadedTick = g_NetTick;
 	}
 }
 
@@ -453,6 +482,21 @@ void netjoinServerOnMove(struct netclient *cl)
 
 static u8 g_JoinBuf[16384];
 
+// A prop that was there when the stage loaded: -1 if it still is, 0 if it is gone for good,
+// 1 if it was picked up and is waiting to come back.
+static s32 netjoinInitialPropGone(s32 i)
+{
+	const struct prop *prop = &g_Vars.props[i];
+	if (prop->syncid != (u32)(i + 1)) {
+		return 0;
+	}
+	if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
+			&& (prop->obj->hidden & OBJHFLAG_GONE)) {
+		return (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0;
+	}
+	return -1;
+}
+
 static void netjoinFlush(struct netclient *cl, struct netbuf *buf, u32 *total)
 {
 	if (buf->wp) {
@@ -479,19 +523,16 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		if (!g_InitProps[i]) {
 			continue;
 		}
-		const struct prop *prop = &g_Vars.props[i];
-		if (prop->syncid != (u32)(i + 1)) {
+		const s32 regen = netjoinInitialPropGone(i);
+		if (regen >= 0) {
 			netbufWriteU8(buf, SVC_PROP_REMOVE);
 			netbufWriteU32(buf, i + 1);
-			netbufWriteU8(buf, 0);
-			++numremoved;
-		} else if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
-				&& (prop->obj->hidden & OBJHFLAG_GONE)) {
-			// picked up, waiting to come back
-			netbufWriteU8(buf, SVC_PROP_REMOVE);
-			netbufWriteU32(buf, i + 1);
-			netbufWriteU8(buf, (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0);
-			++numregen;
+			netbufWriteU8(buf, regen);
+			if (g_Vars.props[i].syncid != (u32)(i + 1)) {
+				++numremoved;
+			} else {
+				++numregen;
+			}
 		}
 		if (buf->wp > sizeof(g_JoinBuf) - 2048) {
 			netjoinFlush(joiner, buf, total);
@@ -680,24 +721,12 @@ s32 netjoinClientKeepPacket(const u8 *data, u32 len, s32 reliable)
 
 u8 *netjoinClientNextPacket(u32 *len)
 {
-	if (g_NetMode != NETMODE_CLIENT) {
-		// left the game while loading
-		while (g_KeptHead) {
-			struct keptpacket *kp = g_KeptHead;
-			g_KeptHead = kp->next;
-			free(kp);
-		}
-		g_KeptTail = NULL;
-		g_Loading = LOAD_NONE;
-		return NULL;
-	}
-
-	if (g_Loading != LOAD_READY) {
+	if (g_NetMode != NETMODE_CLIENT || g_Loading != LOAD_READY) {
 		return NULL;
 	}
 
 	// give the stage a few frames so every player has spawned
-	if (g_NetTick < g_LoadedFrame + 5 || g_Vars.tickmode != TICKMODE_NORMAL || !g_NetLocalClient->player
+	if (g_NetTick < g_LoadedTick + 5 || g_Vars.tickmode != TICKMODE_NORMAL || !g_NetLocalClient->player
 			|| !g_NetLocalClient->player->prop) {
 		return NULL;
 	}
@@ -753,15 +782,28 @@ s32 netjoinTestLoseMessage(void)
 	return g_DesyncTest && g_NetMode == NETMODE_SERVER && (g_DesyncTestCount++ & 1);
 }
 
-static inline bool netjoinIsLooseGun(const struct prop *prop)
+#define RESYNC_IN_FLIGHT 0x80000000u
+
+// a gun, mine or thrown thing in the world that the host made after the stage loaded
+static inline bool netjoinIsLooseGunOrFlying(const struct prop *prop)
 {
 	return prop->syncid > (u32)g_Vars.maxprops && !prop->parent && prop->obj && prop->type == PROPTYPE_WEAPON
 		&& prop->weapon && !(prop->obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING))
 		// (the rocket sitting in a launcher is a prop of its own with no parent: not loose)
-		&& !(prop->obj->flags & OBJFLAG_HELDROCKET)
-		// (nor is anything still in flight: each machine flies its own copy of a rocket or a
-		// thrown thing, and they do not land or go off on the same frame)
-		&& !(prop->obj->hidden & OBJHFLAG_PROJECTILE);
+		&& !(prop->obj->flags & OBJFLAG_HELDROCKET);
+}
+
+// ...and lying still. Each machine flies its own copy of a rocket or a thrown thing, and
+// they do not land or go off on the same frame, so only things at rest are compared.
+static inline bool netjoinIsLooseGun(const struct prop *prop)
+{
+	return netjoinIsLooseGunOrFlying(prop) && !(prop->obj->hidden & OBJHFLAG_PROJECTILE);
+}
+
+static void netjoinResyncReset(void)
+{
+	g_NextResyncTick = 0;
+	g_NumDoorMismatch = 0;
 }
 
 // 0 closed, 1 open, 2 moving
@@ -774,22 +816,6 @@ static inline u8 netjoinDoorState(const struct doorobj *door)
 		return (door->mode == DOORMODE_OPENING && door->frac < door->maxfrac) ? 2 : 1;
 	}
 	return 0;
-}
-
-static struct prop *netjoinFindProp(u32 syncid)
-{
-	if (!syncid) {
-		return NULL;
-	}
-	if (syncid <= (u32)g_Vars.maxprops && g_Vars.props[syncid - 1].syncid == syncid) {
-		return &g_Vars.props[syncid - 1];
-	}
-	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
-		if (g_Vars.props[i].syncid == syncid) {
-			return &g_Vars.props[i];
-		}
-	}
-	return NULL;
 }
 
 static void netjoinServerResync(void)
@@ -816,14 +842,7 @@ static void netjoinServerResync(void)
 		if (!g_InitProps[i]) {
 			continue;
 		}
-		const struct prop *prop = &g_Vars.props[i];
-		s32 regen = -1;
-		if (prop->syncid != (u32)(i + 1)) {
-			regen = 0;
-		} else if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
-				&& (prop->obj->hidden & OBJHFLAG_GONE)) {
-			regen = (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0;
-		}
+		const s32 regen = netjoinInitialPropGone(i);
 		if (regen >= 0) {
 			netbufWriteU16(&buf, i + 1);
 			netbufWriteU8(&buf, regen);
@@ -840,8 +859,9 @@ static void netjoinServerResync(void)
 	u16 numdyn = 0;
 	netbufWriteU16(&buf, 0);
 	for (s32 i = 0; i < g_Vars.maxprops && numdyn < RESYNC_MAX_DYN; ++i) {
-		if (netjoinIsLooseGun(&g_Vars.props[i])) {
-			netbufWriteU32(&buf, g_Vars.props[i].syncid);
+		const struct prop *prop = &g_Vars.props[i];
+		if (netjoinIsLooseGunOrFlying(prop)) {
+			netbufWriteU32(&buf, prop->syncid | ((prop->obj->hidden & OBJHFLAG_PROJECTILE) ? RESYNC_IN_FLIGHT : 0));
 			++numdyn;
 		}
 	}
@@ -903,7 +923,7 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 			}
 			bool found = false;
 			for (s32 j = 0; j < numdyn && !found; ++j) {
-				found = (dyn[j] == prop->syncid);
+				found = ((dyn[j] & ~RESYNC_IN_FLIGHT) == prop->syncid);
 			}
 			if (!found) {
 				netmsgPropRemoveApply(prop->syncid, 0);
@@ -912,7 +932,8 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 		}
 		// and ones the host has that aren't here in any form
 		for (s32 j = 0; j < numdyn && nummissing < RESYNC_MAX_REQ; ++j) {
-			if (!netjoinFindProp(dyn[j])) {
+			// (not the ones still flying on the host: ours may have gone off already)
+			if (!(dyn[j] & RESYNC_IN_FLIGHT) && !netPropBySyncId(dyn[j])) {
 				missing[nummissing++] = dyn[j];
 			}
 		}
@@ -927,7 +948,7 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 		if (!apply || src->error || hoststate > 1) {
 			continue;
 		}
-		struct prop *prop = netjoinFindProp(syncid);
+		struct prop *prop = netPropBySyncId(syncid);
 		if (!prop || prop->type != PROPTYPE_DOOR || !prop->door) {
 			continue;
 		}
@@ -1014,7 +1035,7 @@ u32 netjoinPropReqRead(struct netbuf *src, struct netclient *srccl)
 
 	s32 sent = 0;
 	for (s32 i = 0; i < num; ++i) {
-		struct prop *prop = netjoinFindProp(ids[i]);
+		struct prop *prop = netPropBySyncId(ids[i]);
 		if (prop && netjoinIsLooseGun(prop)) {
 			netmsgSvcPropSpawnWrite(&buf, prop);
 			++sent;

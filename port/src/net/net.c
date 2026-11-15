@@ -286,6 +286,23 @@ static inline s32 netClientNeedReliableMove(const struct netclient *cl)
 		(move->ucmd & UCMD_ACTIVATE);
 }
 
+struct prop *netPropBySyncId(u32 syncid)
+{
+	if (!syncid) {
+		return NULL;
+	}
+	// props that exist from the start of the level have syncid == index + 1
+	if (syncid <= (u32)g_Vars.maxprops && g_Vars.props[syncid - 1].syncid == syncid) {
+		return &g_Vars.props[syncid - 1];
+	}
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		if (g_Vars.props[i].syncid == syncid) {
+			return &g_Vars.props[i];
+		}
+	}
+	return NULL;
+}
+
 u32 netServerUpdateFrames(void)
 {
 	u32 rate = g_NetServerUpdateRate > 1 ? g_NetServerUpdateRate : 1;
@@ -496,6 +513,7 @@ s32 netStartServer(u16 port, s32 maxclients)
 	}
 
 	nethudReset();
+	netjoinReset();
 
 	memset(&g_NetLocalAddr, 0, sizeof(g_NetLocalAddr));
 	g_NetLocalAddr.port = port;
@@ -589,6 +607,7 @@ s32 netStartClient(const char *addr)
 	}
 
 	nethudReset();
+	netjoinReset();
 
 	memset(&g_NetLocalAddr, 0, sizeof(g_NetLocalAddr));
 	g_NetHost = enet_host_create(&g_NetLocalAddr, 1, NETCHAN_COUNT, g_NetClientInRate, g_NetClientOutRate, 0);
@@ -654,8 +673,9 @@ s32 netDisconnect(void)
 
 	g_NetLocalClient = &g_NetClients[NET_MAX_CLIENTS];
 
-	// drop packets held back by the lag simulator
+	// drop packets held back by the lag simulator, and by a mid-match join that was loading
 	netSimClear();
+	netjoinReset();
 
 	// flush pending packets
 	enet_host_flush(g_NetHost);
@@ -704,6 +724,7 @@ static void netServerEvConnect(ENetPeer *peer, const u32 data)
 
 	if (data != NET_PROTOCOL_VER) {
 		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: %s rejected: protocol mismatch", addrstr);
+		enet_peer_set_data(peer, NULL); // (ENet reuses peer slots: forget the last client that had it)
 		enet_peer_disconnect(peer, DISCONNECT_VERSION);
 		return;
 	}
@@ -726,6 +747,7 @@ static void netServerEvConnect(ENetPeer *peer, const u32 data)
 
 	if (!cl) {
 		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: %s rejected: server is full", addrstr);
+		enet_peer_set_data(peer, NULL);
 		enet_peer_disconnect(peer, DISCONNECT_FULL);
 		return;
 	}
@@ -744,6 +766,7 @@ static void netServerEvDisconnect(struct netclient *cl)
 	netjoinServerOnLeave(cl);
 
 	if (cl->peer) {
+		enet_peer_set_data(cl->peer, NULL);
 		enet_peer_reset(cl->peer);
 	}
 
@@ -974,7 +997,7 @@ void netStartFrame(void)
 					netClientEvDisconnect(ev.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT ? DISCONNECT_TIMEOUT : ev.data);
 				} else if (ev.peer) {
 					struct netclient *cl = enet_peer_get_data(ev.peer);
-					if (cl) {
+					if (cl && cl->peer == ev.peer) {
 						netServerEvDisconnect(cl);
 					} else {
 						sysLogPrintf(LOG_WARNING | LOGFLAG_NOCON, "NET: disconnect from %s without attached client", netFormatPeerAddr(ev.peer));

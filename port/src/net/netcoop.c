@@ -66,9 +66,17 @@ void netcoopServerTick(void)
 	}
 
 	// only missions have objectives
-	if (g_Vars.normmplayerisrunning || (g_NetTick % 10) != 0) {
+	if (g_Vars.normmplayerisrunning) {
 		return;
 	}
+
+	// about six times a second. (Not `g_NetTick % 10`: this is only called on update frames,
+	// and with updates every other frame those can all be odd ticks.)
+	static u32 nexttick = 0;
+	if (g_NetTick < nexttick && nexttick - g_NetTick <= 10) {
+		return;
+	}
+	nexttick = g_NetTick + 10;
 
 	netcoopMissionStateTick();
 

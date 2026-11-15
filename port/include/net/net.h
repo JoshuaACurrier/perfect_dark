@@ -6,7 +6,7 @@
 #include "net/netbuf.h"
 #include "net/netsmooth.h"
 
-#define NET_PROTOCOL_VER 24
+#define NET_PROTOCOL_VER 25
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 
@@ -131,6 +131,9 @@ struct netclient {
 
 	u8 out_data[NET_BUFSIZE]; // buffer for out
 };
+
+// the prop with this sync id on this machine, or NULL
+struct prop *netPropBySyncId(u32 syncid);
 
 // how many frames apart the host sends positions right now: Net.Server.UpdateFrames, or 2
 // (30 a second) once four or more players are in the match (Net.Server.AutoUpdateFrames)

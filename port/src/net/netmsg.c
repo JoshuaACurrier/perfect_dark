@@ -212,11 +212,9 @@ static inline struct prop *netbufReadPropPtr(struct netbuf *buf)
 		return NULL;
 	}
 
-	// TODO: make a map or something
-	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
-		if (g_Vars.props[i].syncid == syncid) {
-			return &g_Vars.props[i];
-		}
+	struct prop *prop = netPropBySyncId(syncid);
+	if (prop) {
+		return prop;
 	}
 
 	if (g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME && g_NetCurMsgId != SVC_PROP_DAMAGE) {
@@ -1043,6 +1041,20 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 	struct coord newshotspeed; netbufReadCoord(src, &newshotspeed);
 	const bool handused[2] = { (flags & (1 << 2)) != 0, (flags & (1 << 3)) != 0 };
 
+	// (read the whole message before any early return)
+	s16 newloaded[2][2] = { { 0, 0 }, { 0, 0 } };
+	for (s32 i = 0; i < 2; ++i) {
+		if (handused[i]) {
+			newloaded[i][0] = netbufReadS16(src);
+			newloaded[i][1] = netbufReadS16(src);
+		}
+	}
+	const u32 ammomask = netbufReadU32(src);
+	s16 newammo[ARRAYCOUNT(((struct player *)0)->ammoheldarr)];
+	for (s32 i = 0; i < ARRAYCOUNT(newammo); ++i) {
+		newammo[i] = (i >= 32 || (ammomask & (1 << i))) ? netbufReadS16(src) : 0;
+	}
+
 	if (src->error) {
 		return src->error;
 	}
@@ -1064,18 +1076,13 @@ u32 netmsgSvcPlayerStatsRead(struct netbuf *src, struct netclient *srccl)
 
 	for (s32 i = 0; i < 2; ++i) {
 		if (handused[i]) {
-			pl->hands[i].loadedammo[0] = netbufReadS16(src);
-			pl->hands[i].loadedammo[1] = netbufReadS16(src);
+			pl->hands[i].loadedammo[0] = newloaded[i][0];
+			pl->hands[i].loadedammo[1] = newloaded[i][1];
 		}
 	}
 
-	const u32 ammomask = netbufReadU32(src);
 	for (s32 i = 0; i < ARRAYCOUNT(pl->ammoheldarr); ++i) {
-		if (i >= 32 || (ammomask & (1 << i))) {
-			pl->ammoheldarr[i] = netbufReadS16(src);
-		} else {
-			pl->ammoheldarr[i] = 0;
-		}
+		pl->ammoheldarr[i] = newammo[i];
 	}
 
 	const s32 prevplayernum = g_Vars.currentplayernum;
@@ -1171,6 +1178,33 @@ u32 netmsgSvcPropMoveRead(struct netbuf *src, struct netclient *srccl)
 	struct coord pos; netbufReadCoord(src, &pos);
 	RoomNum rooms[8] = { -1 }; netbufReadRooms(src, rooms, ARRAYCOUNT(rooms));
 
+	// read everything before any early return: bytes left unread would be taken for the
+	// next message
+	struct coord pspeed = { 0.f, 0.f, 0.f };
+	struct coord initrot = { 0.f, 0.f, 0.f };
+	f32 punk0dc = 0.f;
+	u32 pflags = 0;
+	s8 pbouncecount = 0;
+	struct prop *pownerprop = NULL;
+	struct prop *ptargetprop = NULL;
+	f32 phover[6] = { 0.f };
+	if (flags & (1 << 1)) {
+		netbufReadCoord(src, &pspeed);
+		punk0dc = netbufReadF32(src);
+		pflags = netbufReadU32(src);
+		pbouncecount = netbufReadS8(src);
+		pownerprop = netbufReadPropPtr(src);
+		ptargetprop = netbufReadPropPtr(src);
+		if (flags & (1 << 2)) {
+			netbufReadCoord(src, &initrot);
+		}
+		if (flags & (1 << 3)) {
+			for (s32 i = 0; i < 6; ++i) {
+				phover[i] = netbufReadF32(src);
+			}
+		}
+	}
+
 	if (src->error || !prop) {
 		return src->error;
 	}
@@ -1224,25 +1258,24 @@ u32 netmsgSvcPropMoveRead(struct netbuf *src, struct netclient *srccl)
 		return 1;
 	}
 
-	netbufReadCoord(src, &projectile->speed);
-	projectile->unk0dc = netbufReadF32(src);
-	projectile->flags = netbufReadU32(src);
-	projectile->bouncecount = netbufReadS8(src);
-	projectile->ownerprop = netbufReadPropPtr(src);
-	projectile->targetprop = netbufReadPropPtr(src);
+	projectile->speed = pspeed;
+	projectile->unk0dc = punk0dc;
+	projectile->flags = pflags;
+	projectile->bouncecount = pbouncecount;
+	projectile->ownerprop = pownerprop;
+	projectile->targetprop = ptargetprop;
 
 	if (flags & (1 << 2)) {
-		struct coord initrot; netbufReadCoord(src, &initrot);
 		mtx4LoadRotation(&initrot, &projectile->mtx);
 	}
 
 	if (flags & (1 << 3)) {
-		projectile->unk08c = netbufReadF32(src);
-		projectile->unk098 = netbufReadF32(src);
-		projectile->unk0e0 = netbufReadF32(src);
-		projectile->unk0e4 = netbufReadF32(src);
-		projectile->unk0ec = netbufReadF32(src);
-		projectile->unk0f0 = netbufReadF32(src);
+		projectile->unk08c = phover[0];
+		projectile->unk098 = phover[1];
+		projectile->unk0e0 = phover[2];
+		projectile->unk0e4 = phover[3];
+		projectile->unk0ec = phover[4];
+		projectile->unk0f0 = phover[5];
 	}
 
 	prop->pos = pos;
@@ -1407,12 +1440,14 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 			const u8 firecount = netbufReadU8(src);
 			const u8 targetteam = netbufReadU8(src);
 			const u8 clid = netbufReadU8(src);
-			struct chrdata *ownerchr = g_NetClients[clid].player->prop->chr;
-			struct autogunobj *obj = laptopDeploy(modelnum, NULL, ownerchr);
-			obj->ammoquantity = ammocount;
-			obj->firecount = firecount;
-			obj->targetteam = targetteam;
-			prop = obj->base.prop;
+			struct player *ownerpl = (clid < NET_MAX_CLIENTS) ? g_NetClients[clid].player : NULL;
+			struct autogunobj *obj = (ownerpl && ownerpl->prop) ? laptopDeploy(modelnum, NULL, ownerpl->prop->chr) : NULL;
+			if (obj) {
+				obj->ammoquantity = ammocount;
+				obj->firecount = firecount;
+				obj->targetteam = targetteam;
+				prop = obj->base.prop;
+			}
 		}
 	}
 
@@ -1439,7 +1474,7 @@ u32 netmsgSvcPropSpawnRead(struct netbuf *src, struct netclient *srccl)
 		}
 	} else {
 		sysLogPrintf(LOG_WARNING, "NET: no prop allocated when spawning prop %u (%u)", syncid, type);
-		return src->error;
+		return 1; // the rest of this message is still unread
 	}
 
 	if (msgflags & (1 << 1)) {
@@ -1853,6 +1888,9 @@ u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl)
 	const u8 weaponnum = netbufReadU8(src);
 	const f32 weapondmg = netbufReadF32(src);
 	struct coord pos = { 0.f, 0.f, 0.f };
+	if (weapondmg > 0.f) {
+		netbufReadCoord(src, &pos); // (before any early return)
+	}
 
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
@@ -1870,7 +1908,6 @@ u32 netmsgSvcChrDisarmRead(struct netbuf *src, struct netclient *srccl)
 
 	if (weapondmg > 0.f) {
 		// someone shot a grenade the chr is holding, explode that shit
-		netbufReadCoord(src, &pos);
 		struct weaponobj *weapon = NULL;
 		if (chr->weapons_held[0] && chr->weapons_held[0]->weapon) {
 			weapon = chr->weapons_held[0]->weapon;

@@ -223,19 +223,7 @@ void netchrOnRespawn(struct chrdata *chr)
 
 static inline struct prop *netchrFindProp(u16 syncid)
 {
-	if (!syncid) {
-		return NULL;
-	}
-	// props that exist from the start of the level have syncid == index + 1
-	if (syncid <= g_Vars.maxprops && g_Vars.props[syncid - 1].syncid == syncid) {
-		return &g_Vars.props[syncid - 1];
-	}
-	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
-		if (g_Vars.props[i].syncid == syncid) {
-			return &g_Vars.props[i];
-		}
-	}
-	return NULL;
+	return netPropBySyncId(syncid);
 }
 
 static inline s8 netchrHeldWeaponNum(struct chrdata *chr, s32 hand)

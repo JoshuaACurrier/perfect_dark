@@ -365,7 +365,10 @@ void nethudTick(void)
 		return;
 	}
 
-	if (inputKeyJustPressed(VK_T_KEY)) {
+	// a name or setup title is being typed in a menu: T and R are letters there
+	const bool menutyping = (g_MenuKeyboardPlayer >= 0);
+
+	if (!menutyping && inputKeyJustPressed(VK_T_KEY)) {
 		g_ChatTyping = true;
 		g_ChatInput[0] = '\0';
 		g_ChatInputCol = 0;
@@ -378,7 +381,7 @@ void nethudTick(void)
 
 	const bool inlobby = (g_NetLocalClient->state == CLSTATE_LOBBY);
 
-	if (inlobby && g_NetMode == NETMODE_CLIENT && inputKeyJustPressed(VK_R_KEY)) {
+	if (inlobby && !menutyping && g_NetMode == NETMODE_CLIENT && inputKeyJustPressed(VK_R_KEY)) {
 		const s32 id = g_NetLocalClient->id;
 		const s32 ready = (id >= 0 && id < NET_MAX_CLIENTS) ? !(g_Roster[id].flags & ROSTER_READY) : 1;
 		u8 data[8];

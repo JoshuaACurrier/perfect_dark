@@ -84,8 +84,12 @@ void netsmoothAdd(struct netsmooth *s, f32 srctime, const struct coord *pos)
 		s->jitter = 0.f;
 	}
 
+	// A moving player's positions come every `interval` ticks, a still one's four times a
+	// second. One or two lost packets must not look like standing still, so the silence
+	// has to be well over the interval (1 tick apart, or 2 with four or more players).
 	const f32 gap = srctime - s->hist[s->head].t;
-	if (gap < 4.f) {
+	const f32 stillgap = 3.f * clampf(s->interval, 1.f, 3.f) + 2.f;
+	if (gap < stillgap) {
 		s->interval += (gap - s->interval) * 0.05f;
 	} else {
 		// nothing was sent for a while because they stood still: say so, or they would
