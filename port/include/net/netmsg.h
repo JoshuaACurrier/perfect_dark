@@ -37,6 +37,7 @@
 #define SVC_MP_SCORES     0x61 // the whole scoreboard (sent when it changes)
 #define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)
 #define SVC_SLOT          0x64 // a player slot got a new owner mid-match, or lost it (netjoin.c)
+#define SVC_RESYNC        0x65 // what exists on the host right now, so clients can repair differences (netjoin.c)
 #define SVC_NETINFO       0x63 // who is connected: names, ping, packet loss, ready marks (nethud.c)
 
 #define CLC_BAD      0x00 // trash
@@ -46,6 +47,7 @@
 #define CLC_MOVE     0x04 // player input
 #define CLC_SETTINGS 0x05 // player settings changed
 #define CLC_READY    0x06 // ready mark in the lobby
+#define CLC_PROPREQ  0x07 // the resync showed things we don't have: send them again
 
 u32 netmsgClcAuthWrite(struct netbuf *dst);
 u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl);
@@ -96,6 +98,7 @@ void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags);
 u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnPropFree(struct prop *prop);
 void netmsgOnPropTickFree(struct prop *prop);
+s32 netmsgPropRemoveApply(u32 syncid, s32 regen);
 u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);

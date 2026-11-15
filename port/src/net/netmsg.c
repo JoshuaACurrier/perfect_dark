@@ -2035,19 +2035,19 @@ void netmsgOnPropTickFree(struct prop *prop)
 			|| (prop->type != PROPTYPE_WEAPON && prop->type != PROPTYPE_OBJ)) {
 		return;
 	}
+	if (netjoinTestLoseMessage()) {
+		// --net-desynctest: pretend this one never arrived
+		return;
+	}
 	netbufWriteU8(&g_NetMsgRel, SVC_PROP_REMOVE);
 	netbufWritePropPtr(&g_NetMsgRel, prop);
 	netbufWriteU8(&g_NetMsgRel, (prop->obj && (prop->obj->hidden2 & OBJH2FLAG_CANREGEN)) ? 1 : 0);
 }
 
-u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
+// returns true if the thing was still here
+s32 netmsgPropRemoveApply(u32 syncid, s32 regen)
 {
-	const u32 syncid = netbufReadU32(src);
-	const u8 regen = netbufReadU8(src);
-
-	if (src->error || srccl->state < CLSTATE_GAME) {
-		return src->error;
-	}
+	s32 applied = false;
 
 	// don't use netbufReadPropPtr: it's normal for the prop to be gone already (picked up)
 	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
@@ -2058,6 +2058,7 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 				// already taken or on its way out here
 				break;
 			}
+			applied = true;
 			if (regen && (obj->hidden2 & OBJH2FLAG_CANREGEN)) {
 				// same as a pickup on the host: hide it and start the regen wait
 				objFree(obj, false, true);
@@ -2072,6 +2073,20 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 			break;
 		}
 	}
+
+	return applied;
+}
+
+u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u32 syncid = netbufReadU32(src);
+	const u8 regen = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	netmsgPropRemoveApply(syncid, regen);
 
 	return src->error;
 }

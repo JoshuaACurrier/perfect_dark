@@ -615,11 +615,15 @@ static void netjoinServerJoin(struct netclient *cl, s32 p)
 	netjoinSlotWrite(&g_NetMsgRel, p, cl);
 }
 
+static void netjoinServerResync(void);
+
 void netjoinServerTick(void)
 {
 	if (g_NetMode != NETMODE_SERVER || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
 		return;
 	}
+
+	netjoinServerResync();
 
 	if (!g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0
 			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 60 || g_NetTick < g_NextJoinTick) {
@@ -723,4 +727,300 @@ u8 *netjoinClientNextPacket(u32 *len)
 	}
 	free(kp);
 	return data;
+}
+
+/* self-healing: SVC_RESYNC and CLC_PROPREQ */
+
+#define RESYNC_MAX_DYN   512
+#define RESYNC_MAX_DOORS 64
+#define RESYNC_MAX_REQ   8
+
+s32 g_NetServerResyncSecs = 10;
+
+static u32 g_NextResyncTick = 0;
+static s32 g_DesyncTest = -1;
+static u32 g_DesyncTestCount = 0;
+
+// doors that differed in the last resync: only acted on if they still do in the next
+static u32 g_DoorMismatch[RESYNC_MAX_DOORS];
+static s32 g_NumDoorMismatch = 0;
+
+s32 netjoinTestLoseMessage(void)
+{
+	if (g_DesyncTest < 0) {
+		g_DesyncTest = sysArgCheck("--net-desynctest");
+	}
+	return g_DesyncTest && g_NetMode == NETMODE_SERVER && (g_DesyncTestCount++ & 1);
+}
+
+static inline bool netjoinIsLooseGun(const struct prop *prop)
+{
+	return prop->syncid > (u32)g_Vars.maxprops && !prop->parent && prop->obj && prop->type == PROPTYPE_WEAPON
+		&& prop->weapon && !(prop->obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING));
+}
+
+// 0 closed, 1 open, 2 moving
+static inline u8 netjoinDoorState(const struct doorobj *door)
+{
+	if (door->mode == DOORMODE_CLOSING) {
+		return 2;
+	}
+	if (door->mode == DOORMODE_OPENING || door->mode == DOORMODE_WAITING || door->frac > 0.f) {
+		return (door->mode == DOORMODE_OPENING && door->frac < door->maxfrac) ? 2 : 1;
+	}
+	return 0;
+}
+
+static struct prop *netjoinFindProp(u32 syncid)
+{
+	if (!syncid) {
+		return NULL;
+	}
+	if (syncid <= (u32)g_Vars.maxprops && g_Vars.props[syncid - 1].syncid == syncid) {
+		return &g_Vars.props[syncid - 1];
+	}
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		if (g_Vars.props[i].syncid == syncid) {
+			return &g_Vars.props[i];
+		}
+	}
+	return NULL;
+}
+
+static void netjoinServerResync(void)
+{
+	if (g_NetServerResyncSecs <= 0 || g_NetTick < g_NextResyncTick || g_NetNumClients < 2
+			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 120 || !g_InitNum) {
+		return;
+	}
+
+	g_NextResyncTick = g_NetTick + g_NetServerResyncSecs * 60;
+
+	struct netbuf buf = { NULL };
+	buf.data = g_JoinBuf;
+	buf.size = sizeof(g_JoinBuf);
+	netbufStartWrite(&buf);
+
+	netbufWriteU8(&buf, SVC_RESYNC);
+
+	// things from the start of the level that are gone, or waiting to come back
+	const u32 numpos = buf.wp;
+	u16 num = 0;
+	netbufWriteU16(&buf, 0);
+	for (s32 i = 0; i < g_InitNum && i < g_Vars.maxprops && buf.wp < sizeof(g_JoinBuf) - 4096; ++i) {
+		if (!g_InitProps[i]) {
+			continue;
+		}
+		const struct prop *prop = &g_Vars.props[i];
+		s32 regen = -1;
+		if (prop->syncid != (u32)(i + 1)) {
+			regen = 0;
+		} else if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
+				&& (prop->obj->hidden & OBJHFLAG_GONE)) {
+			regen = (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0;
+		}
+		if (regen >= 0) {
+			netbufWriteU16(&buf, i + 1);
+			netbufWriteU8(&buf, regen);
+			++num;
+		}
+	}
+	const u32 afterremoved = buf.wp;
+	buf.wp = numpos;
+	netbufWriteU16(&buf, num);
+	buf.wp = afterremoved;
+
+	// loose guns and other thrown or dropped weapons
+	const u32 dynpos = buf.wp;
+	u16 numdyn = 0;
+	netbufWriteU16(&buf, 0);
+	for (s32 i = 0; i < g_Vars.maxprops && numdyn < RESYNC_MAX_DYN; ++i) {
+		if (netjoinIsLooseGun(&g_Vars.props[i])) {
+			netbufWriteU32(&buf, g_Vars.props[i].syncid);
+			++numdyn;
+		}
+	}
+	const u32 afterdyn = buf.wp;
+	buf.wp = dynpos;
+	netbufWriteU16(&buf, numdyn);
+	buf.wp = afterdyn;
+
+	// doors
+	const u32 doorpos = buf.wp;
+	u16 numdoors = 0;
+	netbufWriteU16(&buf, 0);
+	for (s32 i = 0; i < g_Vars.maxprops && buf.wp < sizeof(g_JoinBuf) - 16; ++i) {
+		const struct prop *prop = &g_Vars.props[i];
+		if (prop->syncid && prop->type == PROPTYPE_DOOR && prop->door) {
+			netbufWriteU16(&buf, prop->syncid);
+			netbufWriteU8(&buf, netjoinDoorState(prop->door));
+			++numdoors;
+		}
+	}
+	const u32 end = buf.wp;
+	buf.wp = doorpos;
+	netbufWriteU16(&buf, numdoors);
+	buf.wp = end;
+
+	netSend(NULL, &buf, true, NETCHAN_DEFAULT);
+}
+
+u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
+{
+	static u32 dyn[RESYNC_MAX_DYN];
+	const bool apply = (srccl->state >= CLSTATE_GAME) && g_Vars.tickmode == TICKMODE_NORMAL;
+	s32 fixedgone = 0, fixedstale = 0, fixeddoors = 0, nummissing = 0;
+	u32 missing[RESYNC_MAX_REQ];
+
+	const u16 numgone = netbufReadU16(src);
+	for (s32 i = 0; i < numgone && !src->error; ++i) {
+		const u16 syncid = netbufReadU16(src);
+		const u8 regen = netbufReadU8(src);
+		if (apply && !src->error && netmsgPropRemoveApply(syncid, regen)) {
+			++fixedgone;
+		}
+	}
+
+	const u16 numdyn = netbufReadU16(src);
+	for (s32 i = 0; i < numdyn && !src->error; ++i) {
+		const u32 syncid = netbufReadU32(src);
+		if (i < RESYNC_MAX_DYN) {
+			dyn[i] = syncid;
+		}
+	}
+
+	if (apply && !src->error && numdyn <= RESYNC_MAX_DYN) {
+		// loose guns here that the host doesn't have any more
+		for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+			struct prop *prop = &g_Vars.props[i];
+			if (!netjoinIsLooseGun(prop)) {
+				continue;
+			}
+			bool found = false;
+			for (s32 j = 0; j < numdyn && !found; ++j) {
+				found = (dyn[j] == prop->syncid);
+			}
+			if (!found) {
+				netmsgPropRemoveApply(prop->syncid, 0);
+				++fixedstale;
+			}
+		}
+		// and ones the host has that aren't here in any form
+		for (s32 j = 0; j < numdyn && nummissing < RESYNC_MAX_REQ; ++j) {
+			if (!netjoinFindProp(dyn[j])) {
+				missing[nummissing++] = dyn[j];
+			}
+		}
+	}
+
+	u32 newmismatch[RESYNC_MAX_DOORS];
+	s32 numnew = 0;
+	const u16 numdoors = netbufReadU16(src);
+	for (s32 i = 0; i < numdoors && !src->error; ++i) {
+		const u16 syncid = netbufReadU16(src);
+		const u8 hoststate = netbufReadU8(src);
+		if (!apply || src->error || hoststate > 1) {
+			continue;
+		}
+		struct prop *prop = netjoinFindProp(syncid);
+		if (!prop || prop->type != PROPTYPE_DOOR || !prop->door) {
+			continue;
+		}
+		const u8 mine = netjoinDoorState(prop->door);
+		if (mine > 1 || mine == hoststate) {
+			continue;
+		}
+		// act only if it was already different last time (doors run on their own timers
+		// on every machine, a moment's difference is normal)
+		bool before = false;
+		for (s32 j = 0; j < g_NumDoorMismatch && !before; ++j) {
+			before = (g_DoorMismatch[j] == syncid);
+		}
+		if (before) {
+			doorSetMode(prop->door, hoststate ? DOORMODE_OPENING : DOORMODE_CLOSING);
+			++fixeddoors;
+		} else if (numnew < RESYNC_MAX_DOORS) {
+			newmismatch[numnew++] = syncid;
+		}
+	}
+
+	if (src->error) {
+		return src->error;
+	}
+
+	memcpy(g_DoorMismatch, newmismatch, sizeof(u32) * numnew);
+	g_NumDoorMismatch = numnew;
+
+	if (nummissing) {
+		u8 data[8 + RESYNC_MAX_REQ * 4];
+		struct netbuf buf = { NULL };
+		buf.data = data;
+		buf.size = sizeof(data);
+		netbufStartWrite(&buf);
+		netbufWriteU8(&buf, CLC_PROPREQ);
+		netbufWriteU8(&buf, nummissing);
+		for (s32 i = 0; i < nummissing; ++i) {
+			netbufWriteU32(&buf, missing[i]);
+		}
+		netSend(g_NetLocalClient, &buf, true, NETCHAN_DEFAULT);
+	}
+
+	if (fixedgone || fixedstale || fixeddoors || nummissing) {
+		sysLogPrintf(LOG_NOTE, "NET: resync repaired: %d pickup(s) that were gone, %d stale gun(s) removed, %d missing gun(s) asked for, %d door(s)",
+			fixedgone, fixedstale, nummissing, fixeddoors);
+	}
+
+	// --net-desynctest: lose a loose gun now and then
+	if (g_DesyncTest < 0) {
+		g_DesyncTest = sysArgCheck("--net-desynctest");
+	}
+	if (g_DesyncTest && apply && !nummissing) {
+		for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+			if (netjoinIsLooseGun(&g_Vars.props[i]) && !(g_Vars.props[i].obj->hidden & OBJHFLAG_PROJECTILE)) {
+				sysLogPrintf(LOG_NOTE, "NET: desynctest: deleting loose gun %u here", g_Vars.props[i].syncid);
+				netmsgPropRemoveApply(g_Vars.props[i].syncid, 0);
+				break;
+			}
+		}
+	}
+
+	return src->error;
+}
+
+u32 netjoinPropReqRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 num = netbufReadU8(src);
+	u32 ids[RESYNC_MAX_REQ];
+
+	if (src->error || num > RESYNC_MAX_REQ) {
+		return 1;
+	}
+	for (s32 i = 0; i < num; ++i) {
+		ids[i] = netbufReadU32(src);
+	}
+	if (src->error || srccl->state < CLSTATE_GAME) {
+		return src->error;
+	}
+
+	struct netbuf buf = { NULL };
+	buf.data = g_JoinBuf;
+	buf.size = sizeof(g_JoinBuf);
+	netbufStartWrite(&buf);
+
+	s32 sent = 0;
+	for (s32 i = 0; i < num; ++i) {
+		struct prop *prop = netjoinFindProp(ids[i]);
+		if (prop && netjoinIsLooseGun(prop)) {
+			netmsgSvcPropSpawnWrite(&buf, prop);
+			++sent;
+		}
+	}
+
+	if (buf.wp) {
+		netSend(srccl, &buf, true, NETCHAN_DEFAULT);
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: client %u asked for %u missing gun(s), sent %d", srccl->id, num, sent);
+
+	return src->error;
 }

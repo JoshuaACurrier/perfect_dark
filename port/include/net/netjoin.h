@@ -64,6 +64,16 @@ s32 netjoinClientKeepPacket(const u8 *data, u32 len, s32 reliable);
 // returns the next kept packet once the stage is ready (free() it), or NULL
 u8 *netjoinClientNextPacket(u32 *len);
 
+// Self-healing: every Net.Server.ResyncSecs the host lists what exists in its world (pickups
+// that are gone, loose guns, which doors are open) and each client repairs what differs:
+// removes what shouldn't be there, asks for what it is missing, opens or closes doors.
+extern s32 g_NetServerResyncSecs;
+u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl);
+u32 netjoinPropReqRead(struct netbuf *src, struct netclient *srccl);
+// --net-desynctest: the host loses every other "this was picked up" message and clients
+// delete a loose gun now and then, to give the resync something to repair
+s32 netjoinTestLoseMessage(void);
+
 // SVC_SLOT: a player slot got a new owner, or lost it
 u32 netjoinSlotRead(struct netbuf *src, struct netclient *srccl);
 

@@ -746,6 +746,7 @@ static void netServerEvReceive(struct netclient *cl)
 			case CLC_MOVE: rc = netmsgClcMoveRead(&cl->in, cl); break;
 			case CLC_SETTINGS: rc = netmsgClcSettingsRead(&cl->in, cl); break;
 			case CLC_READY: rc = nethudReadyRead(&cl->in, cl); break;
+			case CLC_PROPREQ: rc = netjoinPropReqRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -816,6 +817,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_HITMARK: rc = netmsgSvcHitmarkRead(&cl->in, cl); break;
 			case SVC_NETINFO: rc = nethudRosterRead(&cl->in, cl); break;
 			case SVC_SLOT: rc = netjoinSlotRead(&cl->in, cl); break;
+			case SVC_RESYNC: rc = netjoinResyncRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -1286,5 +1288,6 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterInt("Net.Server.LagCompensationMaxMs", &g_NetLagCompMaxMs, 0, 1000);
 	configRegisterInt("Net.Server.SpareSlots", &g_NetServerSpareSlots, 0, MAX_PLAYERS - 1);
 	configRegisterInt("Net.Server.JoinInProgress", &g_NetServerJoinInProgress, 0, 1);
+	configRegisterInt("Net.Server.ResyncSecs", &g_NetServerResyncSecs, 0, 120);
 	configRegisterInt("Net.ShowPing", &g_NetShowPing, 0, 1);
 }
