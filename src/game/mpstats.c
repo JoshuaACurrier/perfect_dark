@@ -19,6 +19,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "net/nethud.h"
 #endif
 
 u32 var80070590 = 0x00000000;
@@ -274,6 +275,10 @@ void mpstatsRecordDeath(s32 aplayernum, s32 vplayernum)
 			vmpchr = MPCHR(vmpindex);
 		}
 	}
+
+#ifndef PLATFORM_N64
+	nethudKill(ampchr, vmpchr);
+#endif
 
 	if (vplayernum >= 0 && aplayernum == vplayernum) {
 		// Player suicide

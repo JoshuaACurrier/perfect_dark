@@ -40,6 +40,8 @@
 #include "net/net.h"
 #include "net/netauto.h"
 #include "net/netlag.h"
+#include "net/nethud.h"
+#include "net/netbuf.h"
 #include "types.h"
 #include "constants.h"
 #include "data.h"
@@ -565,6 +567,30 @@ void netAutoTick(void)
 	netAutoTickKill();
 	netAutoTickAlarm();
 	netAutoTickQuit();
+
+	// --net-hudtest: say something and (client) mark ready a few seconds after getting into the
+	// lobby, and again in the match, so screenshots show the player list and the chat
+	if (g_NetAutoHudTest && g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_LOBBY) {
+		static u32 lobbyticks = 0;
+		static s32 saidingame = 0;
+		if (g_NetLocalClient->state == CLSTATE_LOBBY) {
+			++lobbyticks;
+			if (lobbyticks == 180) {
+				netChat(NULL, g_NetMode == NETMODE_SERVER ? "host here, starting soon" : "hello from the client");
+				if (g_NetMode == NETMODE_CLIENT) {
+					u8 data[8];
+					struct netbuf buf = { NULL };
+					buf.data = data;
+					buf.size = sizeof(data);
+					nethudReadyWrite(&buf, 1);
+					netSend(NULL, &buf, true, NETCHAN_CONTROL);
+				}
+			}
+		} else if (!saidingame && g_NetAutoGameTicks > 300) {
+			saidingame = 1;
+			netChat(NULL, g_NetMode == NETMODE_SERVER ? "gl hf" : "this is a longer chat line to see how the window wraps text onto a second row");
+		}
+	}
 
 	// keep the hit marker up (alternating hit / kill every 2 s) so screenshots catch it
 	if (g_NetAutoHudTest && g_NetLocalClient && g_NetLocalClient->state == CLSTATE_GAME && g_NetLocalClient->player) {

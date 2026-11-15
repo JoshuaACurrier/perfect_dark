@@ -65,6 +65,27 @@ one round trip after the shot. Footsteps (yours, other players', guards' and sim
 games, from where they are; the original only plays them with one player, since split screen players
 share the speakers.
 
+### Lobby, chat and scoreboard
+
+While you are connected and no match is running, a list of the connected players shows at the top
+left, each with a mark: `HOST`, `READY`, `NOT READY`, or `IN MATCH` for players still in a match you
+joined too late for. Joining players press `R` to switch their mark; the host starts the match when
+they like (the marks don't block it). The list also shows each player's ping.
+
+`T` opens a chat line, in the lobby and during a match: type, `Enter` sends, `Esc` cancels. In the
+lobby the chat window stays up at the bottom left; in a match the last lines show for ten seconds.
+The console (`~`) still works for chat too.
+
+During a Combat Simulator match:
+
+* the bar at the top shows the leading team or player, the time left and the score to reach, and
+  your own team or place (`Score And Timer Bar`, `Game.MpScoreBar`);
+* kills are listed at the top left for a few seconds (`Kill Feed`, `Game.MpKillFeed`);
+* hold `Tab` for the scoreboard: every player and simulant with score, deaths and ping.
+
+`T`, `R` and `Tab` are fixed keys for now; if you have bound one of them to something else, both
+things happen.
+
 ### Lag compensation and ping
 
 Your shots are tested by the host against where the other players, simulants and guards were on
@@ -74,7 +95,7 @@ second of positions for this and goes back at most `Net.Server.LagCompensationMa
 ping can still hit you a moment after you got behind cover on your own screen.
 
 `Show Ping` (Extended options, `Net.ShowPing`) puts your ping at the top right, with packet loss when
-there is any; the host sees every player's. The ping is measured inside the game, from the host
+there is any; the host sees the highest of the other players'. The ping is measured inside the game, from the host
 sending a snapshot to your input for it arriving back, so it is a frame or two higher than what a
 network tool would show. Loss is the share of the host's snapshots that never reached you.
 

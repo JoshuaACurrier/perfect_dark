@@ -981,6 +981,11 @@ static inline void inputUpdateWeaponSlots(void)
 {
 	weaponSlotPressed = 0;
 
+	if (textInput) {
+		// typing (chat, console): digits are text, not weapon keys
+		return;
+	}
+
 	if (!weaponNumKeys || textInput) {
 		memset(weaponSlotHeld, 0, sizeof(weaponSlotHeld));
 		return;

@@ -14,6 +14,7 @@
 #include "lib/ailist.h"
 #include "net/netchr.h"
 #include "net/netlag.h"
+#include "net/nethud.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -258,7 +259,8 @@ u32 netmsgClcChatRead(struct netbuf *src, struct netclient *srccl)
 	char tmp[1024];
 	const char *msg = netbufReadStr(src);
 	if (msg && !src->error) {
-		sysLogPrintf(LOG_CHAT, "%s", msg);
+		sysLogPrintf(LOG_CHAT & ~LOGFLAG_SHOWMSG, "%s", msg);
+		nethudChatAdd(msg);
 		netbufStartWrite(&g_NetMsgRel);
 		netmsgSvcChatWrite(&g_NetMsgRel, msg);
 		netSend(NULL, &g_NetMsgRel, true, NETCHAN_CONTROL); // control channel, so players waiting in the lobby see it too
@@ -444,7 +446,9 @@ u32 netmsgSvcChatRead(struct netbuf *src, struct netclient *srccl)
 	char tmp[1024];
 	const char *msg = netbufReadStr(src);
 	if (msg && !src->error) {
-		sysLogPrintf(LOG_CHAT, "%s", msg);
+		// (shown by the chat overlay rather than as a console message)
+		sysLogPrintf(LOG_CHAT & ~LOGFLAG_SHOWMSG, "%s", msg);
+		nethudChatAdd(msg);
 	}
 	return src->error;
 }
@@ -2230,44 +2234,6 @@ void netmsgMpScoresTick(void)
 }
 
 /* hit markers: SVC_HITMARK */
-
-/* SVC_NETINFO: everyone's ping and packet loss, about once a second */
-
-u32 netmsgSvcNetInfoWrite(struct netbuf *dst)
-{
-	netbufWriteU8(dst, SVC_NETINFO);
-	const u32 countpos = dst->wp;
-	netbufWriteU8(dst, 0);
-	u8 count = 0;
-	for (s32 i = 0; i < g_NetMaxClients; ++i) {
-		const struct netclient *cl = &g_NetClients[i];
-		if (cl->state >= CLSTATE_GAME) {
-			netbufWriteU8(dst, cl->id);
-			netbufWriteU16(dst, cl->ping);
-			netbufWriteU8(dst, cl->loss);
-			++count;
-		}
-	}
-	if (!dst->error) {
-		dst->data[countpos] = count;
-	}
-	return dst->error;
-}
-
-u32 netmsgSvcNetInfoRead(struct netbuf *src, struct netclient *srccl)
-{
-	const u8 count = netbufReadU8(src);
-	for (u8 n = 0; n < count && !src->error; ++n) {
-		const u8 id = netbufReadU8(src);
-		const u16 ping = netbufReadU16(src);
-		const u8 loss = netbufReadU8(src);
-		if (!src->error && id < NET_MAX_CLIENTS) {
-			g_NetClients[id].ping = ping;
-			g_NetClients[id].loss = loss;
-		}
-	}
-	return src->error;
-}
 
 u32 netmsgSvcHitmarkWrite(struct netclient *dstcl, bool kill)
 {

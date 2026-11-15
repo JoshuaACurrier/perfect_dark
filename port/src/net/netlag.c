@@ -181,7 +181,7 @@ void netlagServerTick(void)
 				// (loss comes from the client: the share of our snapshot rounds it never got)
 			}
 		}
-		netmsgSvcNetInfoWrite(&g_NetMsg);
+		// (sent to everyone with the roster, see nethud.c)
 	}
 }
 
@@ -485,22 +485,27 @@ Gfx *netlagDrawPing(Gfx *gdl)
 			len += snprintf(buf + len, sizeof(buf) - len, "PING %u\n", cl->ping);
 		}
 	} else {
-		// the host has none of its own: show everyone else's
+		// the host has none of its own: show the highest of the others'
+		// (the lobby list and the Tab scoreboard have everyone's)
+		const struct netclient *worst = NULL;
+		for (s32 i = 0; i < g_NetMaxClients; ++i) {
+			const struct netclient *cl = &g_NetClients[i];
+			if (cl->state >= CLSTATE_GAME && cl != g_NetLocalClient && (!worst || cl->ping > worst->ping)) {
+				worst = cl;
+			}
+		}
 		for (s32 i = 0; i < g_NetMaxClients && len < sizeof(buf) - 48; ++i) {
+			if (&g_NetClients[i] != worst) {
+				continue;
+			}
 			const struct netclient *cl = &g_NetClients[i];
 			if (cl->state < CLSTATE_GAME || cl == g_NetLocalClient) {
 				continue;
 			}
-			char name[NET_MAX_NAME + 1];
-			snprintf(name, sizeof(name), "%s", cl->settings.name);
-			char *nl = strchr(name, '\n');
-			if (nl) {
-				*nl = '\0';
-			}
 			if (cl->loss) {
-				len += snprintf(buf + len, sizeof(buf) - len, "%s %u  LOSS %u%%\n", name, cl->ping, cl->loss);
+				len += snprintf(buf + len, sizeof(buf) - len, "PING %u  LOSS %u%%\n", cl->ping, cl->loss);
 			} else {
-				len += snprintf(buf + len, sizeof(buf) - len, "%s %u\n", name, cl->ping);
+				len += snprintf(buf + len, sizeof(buf) - len, "PING %u\n", cl->ping);
 			}
 		}
 	}

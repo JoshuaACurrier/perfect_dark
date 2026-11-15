@@ -27,6 +27,7 @@
 #include "console.h"
 #include "mixer.h"
 #include "net/net.h"
+#include "net/nethud.h"
 
 /*
  * private typedefs and defines
@@ -302,6 +303,7 @@ void schedEndFrame(OSSched *sc)
 
 	inputUpdate();
 	conTick();
+	nethudTick();
 
 	const bool newKey = inputKeyPressed(VK_F9);
 	if (!netDebugKey && newKey) {

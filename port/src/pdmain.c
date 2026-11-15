@@ -75,6 +75,7 @@
 #include "system.h"
 #include "console.h"
 #include "net/net.h"
+#include "net/nethud.h"
 #include "net/netmsg.h"
 
 extern u8 *g_MempHeap;
@@ -572,6 +573,7 @@ void mainTick(void)
 				gdl = profileRender(gdl);
 			}
 
+			gdl = nethudRender(gdl);
 			gdl = conRender(gdl);
 			gdl = netDebugRender(gdl);
 

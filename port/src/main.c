@@ -19,6 +19,7 @@
 #include "console.h"
 #include "utils.h"
 #include "net/net.h"
+#include "net/nethud.h"
 #include "game/cheats.h"
 #include "hudext.h"
 #include "texpack.h"
@@ -198,6 +199,8 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Video.TexturePacks", &g_TexpackEnabled, 0, 1);
 	configRegisterString("Video.TexturePack", g_TexpackName, TEXPACK_MAX_NAME);
 	configRegisterInt("Game.MpAutoRespawn", &g_MpAutoRespawnSecs, 0, 30);
+	configRegisterInt("Game.MpScoreBar", &g_NetHudScoreBar, 0, 1);
+	configRegisterInt("Game.MpKillFeed", &g_NetHudKillFeed, 0, 1);
 	configRegisterInt("Game.UnlockAllCheats", &g_CheatsUnlockAll, 0, 1);
 	for (s32 j = 0; j < MAX_LOCAL_PLAYERS; ++j) {
 		const s32 i = j + 1;

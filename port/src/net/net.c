@@ -11,6 +11,7 @@
 #include "net/netauto.h"
 #include "net/netchr.h"
 #include "net/netlag.h"
+#include "net/nethud.h"
 #include "net/netcoop.h"
 #include "types.h"
 #include "constants.h"
@@ -466,6 +467,8 @@ s32 netStartServer(u16 port, s32 maxclients)
 		return -1;
 	}
 
+	nethudReset();
+
 	memset(&g_NetLocalAddr, 0, sizeof(g_NetLocalAddr));
 	g_NetLocalAddr.port = port;
 	g_NetHost = enet_host_create(&g_NetLocalAddr, maxclients, NETCHAN_COUNT, g_NetServerInRate, g_NetServerOutRate, 0);
@@ -556,6 +559,8 @@ s32 netStartClient(const char *addr)
 		sysLogPrintf(LOG_ERROR, "NET: `%s` is not a valid address", addr);
 		return -2;
 	}
+
+	nethudReset();
 
 	memset(&g_NetLocalAddr, 0, sizeof(g_NetLocalAddr));
 	g_NetHost = enet_host_create(&g_NetLocalAddr, 1, NETCHAN_COUNT, g_NetClientInRate, g_NetClientOutRate, 0);
@@ -736,6 +741,7 @@ static void netServerEvReceive(struct netclient *cl)
 			case CLC_CHAT: rc = netmsgClcChatRead(&cl->in, cl); break;
 			case CLC_MOVE: rc = netmsgClcMoveRead(&cl->in, cl); break;
 			case CLC_SETTINGS: rc = netmsgClcSettingsRead(&cl->in, cl); break;
+			case CLC_READY: rc = nethudReadyRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -804,7 +810,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_MP_KILL: rc = netmsgSvcMpKillRead(&cl->in, cl); break;
 			case SVC_MP_SCORES: rc = netmsgSvcMpScoresRead(&cl->in, cl); break;
 			case SVC_HITMARK: rc = netmsgSvcHitmarkRead(&cl->in, cl); break;
-			case SVC_NETINFO: rc = netmsgSvcNetInfoRead(&cl->in, cl); break;
+			case SVC_NETINFO: rc = nethudRosterRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -1166,7 +1172,8 @@ void netChatPrintf(struct netclient *dst, const char *fmt, ...)
 	buf.size = sizeof(bufdata);
 
 	if (g_NetMode == NETMODE_SERVER) {
-		sysLogPrintf(LOG_CHAT, "%s", tmp);
+		sysLogPrintf(LOG_CHAT & ~LOGFLAG_SHOWMSG, "%s", tmp);
+		nethudChatAdd(tmp);
 		netmsgSvcChatWrite(&buf, tmp);
 	} else {
 		netmsgClcChatWrite(&buf, tmp);
