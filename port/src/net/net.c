@@ -1146,6 +1146,10 @@ void netSyncIdsAllocate(void)
 
 	// chr and mission state is per stage
 	netchrReset();
+	for (s32 i = 0; i < NET_MAX_CLIENTS + 1; ++i) {
+		netsmoothReset(&g_NetClients[i].smooth);
+		g_NetClients[i].pldelay = 0.f;
+	}
 	netlagReset();
 	netcoopReset();
 
@@ -1289,5 +1293,6 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterInt("Net.Server.SpareSlots", &g_NetServerSpareSlots, 0, MAX_PLAYERS - 1);
 	configRegisterInt("Net.Server.JoinInProgress", &g_NetServerJoinInProgress, 0, 1);
 	configRegisterInt("Net.Server.ResyncSecs", &g_NetServerResyncSecs, 0, 120);
+	configRegisterInt("Net.SmoothPlayers", &g_NetSmoothPlayers, 0, 1);
 	configRegisterInt("Net.ShowPing", &g_NetShowPing, 0, 1);
 }

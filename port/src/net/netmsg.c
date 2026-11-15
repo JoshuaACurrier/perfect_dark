@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include "types.h"
 #include "data.h"
 #include "bss.h"
@@ -91,18 +92,47 @@ static inline u32 netbufReadGset(struct netbuf *buf, struct gset *gset)
 	return buf->error;
 }
 
+static inline s16 netmsgPackS16(f32 v, f32 scale)
+{
+	v *= scale;
+	if (v != v) {
+		return 0;
+	}
+	if (v > 32767.f) {
+		return 32767;
+	}
+	if (v < -32767.f) {
+		return -32767;
+	}
+	return (s16)(v < 0.f ? v - 0.5f : v + 0.5f);
+}
+
+// degrees, any range, to a 16-bit turn
+static inline u16 netmsgPackAngle(f32 deg)
+{
+	if (deg != deg) {
+		return 0;
+	}
+	deg = fmodf(deg, 360.f);
+	if (deg < 0.f) {
+		deg += 360.f;
+	}
+	return (u16)((u32)(deg * (65536.f / 360.f) + 0.5f) & 0xffff);
+}
+
 static inline u32 netbufWritePlayerMove(struct netbuf *buf, const struct netplayermove *in)
 {
+	// (fixed point where a float's range isn't needed: 37 bytes instead of 53)
 	netbufWriteU32(buf, in->tick);
 	netbufWriteU32(buf, in->ucmd);
-	netbufWriteF32(buf, in->leanofs);
-	netbufWriteF32(buf, in->crouchofs);
-	netbufWriteF32(buf, in->movespeed[0]);
-	netbufWriteF32(buf, in->movespeed[1]);
-	netbufWriteF32(buf, in->angles[0]);
-	netbufWriteF32(buf, in->angles[1]);
-	netbufWriteF32(buf, in->crosspos[0]);
-	netbufWriteF32(buf, in->crosspos[1]);
+	netbufWriteS16(buf, netmsgPackS16(in->leanofs, 256.f));
+	netbufWriteS16(buf, netmsgPackS16(in->crouchofs, 64.f));
+	netbufWriteS16(buf, netmsgPackS16(in->movespeed[0], 2048.f));
+	netbufWriteS16(buf, netmsgPackS16(in->movespeed[1], 2048.f));
+	netbufWriteU16(buf, netmsgPackAngle(in->angles[0]));
+	netbufWriteU16(buf, netmsgPackAngle(in->angles[1]));
+	netbufWriteS16(buf, netmsgPackS16(in->crosspos[0], 32.f));
+	netbufWriteS16(buf, netmsgPackS16(in->crosspos[1], 32.f));
 	netbufWriteS8(buf, in->weaponnum);
 	netbufWriteCoord(buf, &in->pos);
 	if (in->ucmd & UCMD_AIMMODE) {
@@ -115,14 +145,17 @@ static inline u32 netbufReadPlayerMove(struct netbuf *buf, struct netplayermove 
 {
 	in->tick = netbufReadU32(buf);
 	in->ucmd = netbufReadU32(buf);
-	in->leanofs = netbufReadF32(buf);
-	in->crouchofs = netbufReadF32(buf);
-	in->movespeed[0] = netbufReadF32(buf);
-	in->movespeed[1] = netbufReadF32(buf);
-	in->angles[0] = netbufReadF32(buf);
-	in->angles[1] = netbufReadF32(buf);
-	in->crosspos[0] = netbufReadF32(buf);
-	in->crosspos[1] = netbufReadF32(buf);
+	in->leanofs = (f32)netbufReadS16(buf) / 256.f;
+	in->crouchofs = (f32)netbufReadS16(buf) / 64.f;
+	in->movespeed[0] = (f32)netbufReadS16(buf) / 2048.f;
+	in->movespeed[1] = (f32)netbufReadS16(buf) / 2048.f;
+	in->angles[0] = (f32)netbufReadU16(buf) * (360.f / 65536.f);
+	in->angles[1] = (f32)netbufReadU16(buf) * (360.f / 65536.f);
+	if (in->angles[1] > 180.f) {
+		in->angles[1] -= 360.f; // looking up or down: -90..90
+	}
+	in->crosspos[0] = (f32)netbufReadS16(buf) / 32.f;
+	in->crosspos[1] = (f32)netbufReadS16(buf) / 32.f;
 	in->weaponnum = netbufReadS8(buf);
 	netbufReadCoord(buf, &in->pos);
 	if (in->ucmd & UCMD_AIMMODE) {
@@ -286,6 +319,23 @@ u32 netmsgClcMoveWrite(struct netbuf *dst)
 	const f32 chrdelay = netchrClientDisplayDelay() * 8.f;
 	netbufWriteU8(dst, chrdelay > 255.f ? 255 : (u8)chrdelay);
 	netbufWriteU8(dst, netchrClientLoss());
+	// when this position was true on our clock (for showing us smoothly on the host), and how
+	// far behind we show the other players (for lag compensation)
+	netbufWriteF32(dst, netchrClock());
+	f32 pldelay = 0.f;
+	s32 numsmooth = 0;
+	for (s32 i = 0; i < NET_MAX_CLIENTS; ++i) {
+		const struct netclient *ocl = &g_NetClients[i];
+		if (ocl != g_NetLocalClient && ocl->state >= CLSTATE_GAME && ocl->player && !ocl->player->isdead) {
+			const f32 d = netsmoothDelay(&ocl->smooth);
+			if (d > 0.f) {
+				pldelay += d;
+				++numsmooth;
+			}
+		}
+	}
+	pldelay = numsmooth ? pldelay / (f32)numsmooth * 8.f : 0.f;
+	netbufWriteU8(dst, pldelay > 255.f ? 255 : (u8)pldelay);
 	return dst->error;
 }
 
@@ -297,6 +347,8 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 	const f32 viewtime = netbufReadF32(src);
 	const u8 chrdelay = netbufReadU8(src);
 	const u8 loss = netbufReadU8(src);
+	const f32 sendtime = netbufReadF32(src);
+	const u8 pldelay = netbufReadU8(src);
 
 	if (srccl->state != CLSTATE_GAME) {
 		// silently ignore
@@ -311,6 +363,7 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 	if (!src->error) {
 		netlagOnClientMove(srccl, viewtime, (f32)chrdelay / 8.f);
 		srccl->loss = loss > 100 ? 100 : loss;
+		srccl->pldelay = (f32)pldelay / 8.f;
 	}
 
 	if (!src->error) {
@@ -341,6 +394,7 @@ u32 netmsgClcMoveRead(struct netbuf *src, struct netclient *srccl)
 		memmove(srccl->inmove + 1, srccl->inmove, sizeof(srccl->inmove) - sizeof(*srccl->inmove));
 		srccl->inmove[0] = newmove;
 		srccl->lerpticks = 0;
+		netsmoothAdd(&srccl->smooth, sendtime, &newmove.pos);
 	}
 
 	return src->error;
@@ -852,6 +906,7 @@ u32 netmsgSvcPlayerMoveWrite(struct netbuf *dst, struct netclient *movecl)
 	netbufWriteU8(dst, movecl->id);
 	netbufWriteU32(dst, movecl->inmove[0].tick);
 	netbufWritePlayerMove(dst, &movecl->outmove[0]);
+	netbufWriteF32(dst, netchrClock()); // when that was, for showing them smoothly
 	if (movecl->outmove[0].ucmd & UCMD_FL_FORCEMASK) {
 		netbufWriteRooms(dst, movecl->player->prop->rooms, ARRAYCOUNT(movecl->player->prop->rooms));
 	}
@@ -869,6 +924,7 @@ u32 netmsgSvcPlayerMoveRead(struct netbuf *src, struct netclient *srccl)
 	id = netbufReadU8(src);
 	outmoveack = netbufReadU32(src);
 	netbufReadPlayerMove(src, &newmove);
+	const f32 srvtime = netbufReadF32(src);
 	if (newmove.ucmd & UCMD_FL_FORCEMASK) {
 		netbufReadRooms(src, newrooms, ARRAYCOUNT(newrooms));
 	}
@@ -884,6 +940,9 @@ u32 netmsgSvcPlayerMoveRead(struct netbuf *src, struct netclient *srccl)
 	movecl->inmove[0] = newmove;
 	movecl->outmoveack = outmoveack;
 	movecl->lerpticks = 0;
+	if (movecl != g_NetLocalClient) {
+		netsmoothAdd(&movecl->smooth, srvtime, &newmove.pos);
+	}
 
 	if (movecl == g_NetLocalClient && (newmove.ucmd & UCMD_FL_FORCEMASK)) {
 		// server wants to teleport us

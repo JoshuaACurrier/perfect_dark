@@ -4,6 +4,7 @@
 #include "types.h"
 #include "constants.h"
 #include "net/netbuf.h"
+#include "net/netsmooth.h"
 
 #define NET_PROTOCOL_VER 24
 
@@ -116,6 +117,9 @@ struct netclient {
 	u8 loss; // everyone: packets lost on the way to this client, percent
 	u8 ready; // host: marked ready in the lobby (nethud.c)
 	u8 joinpending; // host: connected during a match and wants a player slot in it (netjoin.c)
+
+	struct netsmooth smooth; // where this (remote) player has been lately, for showing them smoothly
+	f32 pldelay; // host: how far behind this client shows other players, in 60ths (0 = old fixed delay)
 
 	struct netbuf out; // outbound messages are written here, except broadcasts
 	struct netbuf in; // incoming packets are fed here

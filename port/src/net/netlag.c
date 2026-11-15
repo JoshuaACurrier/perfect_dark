@@ -263,7 +263,7 @@ static void netlagMeasure(struct player *pl, struct netclient *cl, f32 now)
 			continue;
 		}
 
-		const f32 back = cl->lagticks + (prop->type == PROPTYPE_PLAYER ? PLAYER_DISPLAY_DELAY : cl->chrdelay);
+		const f32 back = cl->lagticks + (prop->type == PROPTYPE_PLAYER ? (cl->pldelay > 0.f ? cl->pldelay : PLAYER_DISPLAY_DELAY) : cl->chrdelay);
 		f32 d[NETLAG_MEASURE_NUM];
 		f32 mind = 100000.f;
 		bool teleported = false;
@@ -402,7 +402,7 @@ void netlagBeginShots(void)
 			continue;
 		}
 
-		f32 back = cl->lagticks + (prop->type == PROPTYPE_PLAYER ? PLAYER_DISPLAY_DELAY : cl->chrdelay) + g_NetLagBias;
+		f32 back = cl->lagticks + (prop->type == PROPTYPE_PLAYER ? (cl->pldelay > 0.f ? cl->pldelay : PLAYER_DISPLAY_DELAY) : cl->chrdelay) + g_NetLagBias;
 		if (back > maxticks) {
 			back = maxticks;
 		}

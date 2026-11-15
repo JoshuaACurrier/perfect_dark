@@ -77,6 +77,7 @@ static void bwalkUpdateRemote(void)
 	const struct netplayermove *inmove = &pl->client->inmove[0];
 	const struct netplayermove *inmoveprev = &pl->client->inmove[1];
 	struct coord delta;
+	struct coord smoothpos;
 	u16 cdtype = CDTYPE_ALL;
 	s32 moveticks = inmove->tick - inmoveprev->tick;
 	if (moveticks > g_NetInterpTicks) {
@@ -95,9 +96,11 @@ static void bwalkUpdateRemote(void)
 	const f32 dx = pl->prop->pos.x - inmove->pos.x;
 	const f32 dy = pl->prop->pos.y - inmove->pos.y;
 	const f32 dz = pl->prop->pos.z - inmove->pos.z;
+	// (shown in the past the copy trails the newest position by more, so allow more)
+	const f32 snapdist = (g_NetSmoothPlayers && pl->client->smooth.synced) ? 400.f : 150.f;
 	const bool forcepos = !inmoveprev->tick ||
 		(inmove->ucmd & UCMD_FL_FORCEPOS) ||
-		(dx * dx + dy * dy + dz * dz > 150.f * 150.f);
+		(dx * dx + dy * dy + dz * dz > snapdist * snapdist);
 
 	delta.x = 0.f;
 	delta.y = 0.f;
@@ -131,6 +134,24 @@ static void bwalkUpdateRemote(void)
 		pl->jumping = false;
 		pl->client->lerpticks = g_NetInterpTicks + 1;
 		cdtype = CDTYPE_PLAYERS; // don't get stuck in the local client
+		// start over from here
+		const s32 wassynced = pl->client->smooth.synced;
+		const f32 lastt = pl->client->smooth.hist[pl->client->smooth.head].t;
+		if (wassynced) {
+			pl->client->smooth.num = 0;
+			netsmoothAdd(&pl->client->smooth, lastt + 0.01f, &inmove->pos);
+		}
+	} else if (netsmoothSample(&pl->client->smooth, &smoothpos)) {
+		// shown a little in the past, between two positions we know (netsmooth.c)
+		delta.x = smoothpos.x - pl->prop->pos.x;
+		delta.y = smoothpos.y - pl->prop->pos.y;
+		delta.z = smoothpos.z - pl->prop->pos.z;
+		if (delta.x != 0.f || delta.y != 0.f || delta.z != 0.f) {
+			bwalk0f0c63bc(&delta, pl->swaytarget == 0.0f, cdtype);
+		}
+		if (pl->client->lerpticks <= moveticks) {
+			pl->client->lerpticks += g_Vars.lvupdate60;
+		}
 	} else if (!moveticks) {
 		// duplicate move, reposition to correct coords
 		delta.x = inmove->pos.x - pl->prop->pos.x;
