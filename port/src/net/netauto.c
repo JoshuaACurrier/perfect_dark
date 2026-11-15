@@ -364,6 +364,7 @@ static void netAutoTickQuit(void)
 		sysLogPrintf(LOG_NOTE, "NET: autoquit after %d seconds in game; sent %u bytes (%u/s), received %u bytes (%u/s)",
 			g_NetAutoQuitSecs, netStatBytesSent(), netStatBytesSent() / g_NetAutoQuitSecs,
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
+		netStatLogMessages(g_NetAutoQuitSecs);
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d", g_FootstepsPlayed);
 		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
 		if (g_NetMode == NETMODE_SERVER) {

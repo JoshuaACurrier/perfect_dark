@@ -92,6 +92,16 @@ static inline u32 netbufReadGset(struct netbuf *buf, struct gset *gset)
 	return buf->error;
 }
 
+// parts of a player move that are only sent when they aren't at rest
+#define MOVE_HAS_LEAN   (1 << 0)
+#define MOVE_HAS_CROUCH (1 << 1)
+#define MOVE_HAS_SPEED  (1 << 2)
+#define MOVE_HAS_CROSS  (1 << 3)
+#define MOVE_HAS_WEAPON (1 << 4)
+// the crosshair's resting place: the middle of the screen (in 1/32 pixels)
+#define MOVE_CROSS_X ((SCREEN_WIDTH_LO / 2) * 32)
+#define MOVE_CROSS_Y ((SCREEN_HEIGHT_LO / 2) * 32)
+
 static inline s16 netmsgPackS16(f32 v, f32 scale)
 {
 	v *= scale;
@@ -123,17 +133,39 @@ static inline u16 netmsgPackAngle(f32 deg)
 static inline u32 netbufWritePlayerMove(struct netbuf *buf, const struct netplayermove *in)
 {
 	// (fixed point where a float's range isn't needed: 37 bytes instead of 53)
+	// and the parts that are usually at rest are left out (a bit each in `have`)
+	const s16 lean = netmsgPackS16(in->leanofs, 256.f);
+	const s16 crouch = netmsgPackS16(in->crouchofs, 64.f);
+	const s16 speedf = netmsgPackS16(in->movespeed[0], 2048.f);
+	const s16 speeds = netmsgPackS16(in->movespeed[1], 2048.f);
+	const s16 crossx = netmsgPackS16(in->crosspos[0], 32.f);
+	const s16 crossy = netmsgPackS16(in->crosspos[1], 32.f);
+	const u8 have = (lean ? MOVE_HAS_LEAN : 0) | (crouch ? MOVE_HAS_CROUCH : 0)
+		| ((speedf || speeds) ? MOVE_HAS_SPEED : 0)
+		| ((crossx != MOVE_CROSS_X || crossy != MOVE_CROSS_Y) ? MOVE_HAS_CROSS : 0)
+		| (in->weaponnum != -1 ? MOVE_HAS_WEAPON : 0);
 	netbufWriteU32(buf, in->tick);
 	netbufWriteU32(buf, in->ucmd);
-	netbufWriteS16(buf, netmsgPackS16(in->leanofs, 256.f));
-	netbufWriteS16(buf, netmsgPackS16(in->crouchofs, 64.f));
-	netbufWriteS16(buf, netmsgPackS16(in->movespeed[0], 2048.f));
-	netbufWriteS16(buf, netmsgPackS16(in->movespeed[1], 2048.f));
+	netbufWriteU8(buf, have);
+	if (have & MOVE_HAS_LEAN) {
+		netbufWriteS16(buf, lean);
+	}
+	if (have & MOVE_HAS_CROUCH) {
+		netbufWriteS16(buf, crouch);
+	}
+	if (have & MOVE_HAS_SPEED) {
+		netbufWriteS16(buf, speedf);
+		netbufWriteS16(buf, speeds);
+	}
 	netbufWriteU16(buf, netmsgPackAngle(in->angles[0]));
 	netbufWriteU16(buf, netmsgPackAngle(in->angles[1]));
-	netbufWriteS16(buf, netmsgPackS16(in->crosspos[0], 32.f));
-	netbufWriteS16(buf, netmsgPackS16(in->crosspos[1], 32.f));
-	netbufWriteS8(buf, in->weaponnum);
+	if (have & MOVE_HAS_CROSS) {
+		netbufWriteS16(buf, crossx);
+		netbufWriteS16(buf, crossy);
+	}
+	if (have & MOVE_HAS_WEAPON) {
+		netbufWriteS8(buf, in->weaponnum);
+	}
 	netbufWriteCoord(buf, &in->pos);
 	if (in->ucmd & UCMD_AIMMODE) {
 		netbufWriteF32(buf, in->zoomfov);
@@ -145,18 +177,19 @@ static inline u32 netbufReadPlayerMove(struct netbuf *buf, struct netplayermove 
 {
 	in->tick = netbufReadU32(buf);
 	in->ucmd = netbufReadU32(buf);
-	in->leanofs = (f32)netbufReadS16(buf) / 256.f;
-	in->crouchofs = (f32)netbufReadS16(buf) / 64.f;
-	in->movespeed[0] = (f32)netbufReadS16(buf) / 2048.f;
-	in->movespeed[1] = (f32)netbufReadS16(buf) / 2048.f;
+	const u8 have = netbufReadU8(buf);
+	in->leanofs = (have & MOVE_HAS_LEAN) ? (f32)netbufReadS16(buf) / 256.f : 0.f;
+	in->crouchofs = (have & MOVE_HAS_CROUCH) ? (f32)netbufReadS16(buf) / 64.f : 0.f;
+	in->movespeed[0] = (have & MOVE_HAS_SPEED) ? (f32)netbufReadS16(buf) / 2048.f : 0.f;
+	in->movespeed[1] = (have & MOVE_HAS_SPEED) ? (f32)netbufReadS16(buf) / 2048.f : 0.f;
 	in->angles[0] = (f32)netbufReadU16(buf) * (360.f / 65536.f);
 	in->angles[1] = (f32)netbufReadU16(buf) * (360.f / 65536.f);
 	if (in->angles[1] > 180.f) {
 		in->angles[1] -= 360.f; // looking up or down: -90..90
 	}
-	in->crosspos[0] = (f32)netbufReadS16(buf) / 32.f;
-	in->crosspos[1] = (f32)netbufReadS16(buf) / 32.f;
-	in->weaponnum = netbufReadS8(buf);
+	in->crosspos[0] = (f32)((have & MOVE_HAS_CROSS) ? netbufReadS16(buf) : MOVE_CROSS_X) / 32.f;
+	in->crosspos[1] = (f32)((have & MOVE_HAS_CROSS) ? netbufReadS16(buf) : MOVE_CROSS_Y) / 32.f;
+	in->weaponnum = (have & MOVE_HAS_WEAPON) ? netbufReadS8(buf) : -1;
 	netbufReadCoord(buf, &in->pos);
 	if (in->ucmd & UCMD_AIMMODE) {
 		in->zoomfov = netbufReadF32(buf);

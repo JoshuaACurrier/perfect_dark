@@ -34,12 +34,16 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-lagbias TICKS` | Host: rewind TICKS 60ths more (negative: less) than measured. |
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
+| `--net-desynctest` | Host: loses every other "this was picked up or removed" message. Client: deletes a loose gun after each resync. Gives the 10-second resync something to repair; the client logs `NET: resync repaired: ...` and the host `client N asked for ... missing gun(s)`. Without the flag a healthy match logs no repairs. |
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |
 | `--net-teams` | Host: turn teams on for the auto-started match: the players and every other simulant against the rest. |
 | `--net-autoquit SECS` | Quit SECS seconds after the match starts. Logs the scoreboard as this machine sees it, how many footsteps played, frame times (`NET: frames in game: ... took 30 ms or longer`, and a `NET: slow frame` line for each of the first 20) and what the texture pack loader did. |
 | `--net-autopilot [SEED]` | Drive the local player with random but repeatable input. |
 | `--net-dump FILE`, `--net-dump-interval T` | Write every chr's state to FILE every T ticks. |
 | `--net-lag MS`, `--net-jitter MS`, `--net-loss PCT` | Simulate a bad connection on outgoing packets. |
+
+At `--net-autoquit` a client also logs what it received, by message type (bytes a second, count,
+size). Give the clients a shorter `--net-autoquit` than the host, or the host is gone first.
 
 ## Example
 

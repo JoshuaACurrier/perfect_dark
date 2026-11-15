@@ -221,8 +221,22 @@ static inline void bmoveProcessRemoteInput(const bool allowc1buttons)
 
 	bgunTickGameplay(fireguns);
 
-	if (fireguns && g_NetMode == NETMODE_SERVER) {
-		netmsgSvcPlayerStatsWrite(&g_NetMsgRel, pl->client);
+	if (g_NetMode == NETMODE_SERVER) {
+		// ammo while firing: ten times a second is plenty (it was every frame, reliably, to
+		// everyone), and once more when they let go so the last count is right
+		struct netclient *cl = pl->client;
+		if (fireguns) {
+			if (g_NetTick >= cl->nextstatstick) {
+				netmsgSvcPlayerStatsWrite(&g_NetMsgRel, cl);
+				cl->nextstatstick = g_NetTick + 6;
+				cl->statsdirty = 0;
+			} else {
+				cl->statsdirty = 1;
+			}
+		} else if (cl->statsdirty) {
+			netmsgSvcPlayerStatsWrite(&g_NetMsgRel, cl);
+			cl->statsdirty = 0;
+		}
 	}
 
 	if (!handled && (inmove->ucmd & UCMD_RELOAD)) {

@@ -42,6 +42,7 @@ s32 g_NetHostLatch = false;
 s32 g_NetJoinLatch = false;
 
 u32 g_NetServerUpdateRate = 1;
+s32 g_NetServerAutoUpdateRate = 1;
 u32 g_NetServerInRate = 128 * 1024;
 u32 g_NetServerOutRate = 128 * 1024;
 u32 g_NetServerPort = NET_DEFAULT_PORT;
@@ -285,13 +286,32 @@ static inline s32 netClientNeedReliableMove(const struct netclient *cl)
 		(move->ucmd & UCMD_ACTIVATE);
 }
 
+u32 netServerUpdateFrames(void)
+{
+	u32 rate = g_NetServerUpdateRate > 1 ? g_NetServerUpdateRate : 1;
+	if (g_NetServerAutoUpdateRate && rate < 2) {
+		s32 remote = 0;
+		for (s32 i = 1; i < g_NetMaxClients; ++i) {
+			if (g_NetClients[i].state >= CLSTATE_GAME) {
+				++remote;
+			}
+		}
+		if (remote >= 3) {
+			rate = 2;
+		}
+	}
+	return rate;
+}
+
 static inline s32 netClientNeedMove(const struct netclient *cl)
 {
 	if (g_NetTick < g_NetNextUpdate) {
 		return false;
 	}
+	// compared with what the other end last got from us: with updates every other frame, a
+	// change on a frame in between would otherwise never be sent
 	const struct netplayermove *move = &cl->outmove[0];
-	const struct netplayermove *moveprev = &cl->outmove[1];
+	const struct netplayermove *moveprev = &cl->sentmove;
 	if (move->tick && cl->outmoveack >= move->tick) {
 		return false;
 	}
@@ -777,13 +797,55 @@ static void netClientEvDisconnect(const u32 reason)
 	netDisconnect();
 }
 
+// client: bytes and count of each kind of message received (logged at --net-autoquit)
+static u32 g_NetMsgBytes[256];
+static u32 g_NetMsgCount[256];
+static u32 g_NetMsgPackets = 0;
+
+void netStatLogMessages(s32 secs)
+{
+	if (g_NetMode != NETMODE_CLIENT || secs <= 0) {
+		return;
+	}
+	sysLogPrintf(LOG_NOTE, "NET: received %u packets (%u/s); by message:", g_NetMsgPackets, g_NetMsgPackets / secs);
+	for (s32 n = 0; n < 8; ++n) {
+		s32 best = -1;
+		for (s32 i = 0; i < 256; ++i) {
+			if (g_NetMsgBytes[i] && (best < 0 || g_NetMsgBytes[i] > g_NetMsgBytes[best])) {
+				best = i;
+			}
+		}
+		if (best < 0) {
+			break;
+		}
+		sysLogPrintf(LOG_NOTE, "NET:   0x%02x: %u bytes/s, %u a second, %u bytes each", best,
+			g_NetMsgBytes[best] / secs, g_NetMsgCount[best] / secs, g_NetMsgBytes[best] / g_NetMsgCount[best]);
+		g_NetMsgBytes[best] = 0;
+	}
+	memset(g_NetMsgBytes, 0, sizeof(g_NetMsgBytes));
+	memset(g_NetMsgCount, 0, sizeof(g_NetMsgCount));
+	g_NetMsgPackets = 0;
+}
+
 static void netClientEvReceive(struct netclient *cl)
 {
 	u32 rc = 0;
 	u8 msgid = 0;
+	u32 prevleft = netbufReadLeft(&cl->in);
+	u8 previd = 0;
+	bool any = false;
+
+	++g_NetMsgPackets;
 
 	while (!rc && netbufReadLeft(&cl->in) > 0) {
+		if (any) {
+			g_NetMsgBytes[previd] += prevleft - netbufReadLeft(&cl->in);
+			++g_NetMsgCount[previd];
+			prevleft = netbufReadLeft(&cl->in);
+		}
 		msgid = netbufReadU8(&cl->in);
+		previd = msgid;
+		any = true;
 		g_NetCurMsgId = msgid;
 		switch (msgid) {
 			case SVC_NOP: rc = 0; break;
@@ -822,6 +884,11 @@ static void netClientEvReceive(struct netclient *cl)
 				rc = 1;
 				break;
 		}
+	}
+
+	if (any) {
+		g_NetMsgBytes[previd] += prevleft - netbufReadLeft(&cl->in);
+		++g_NetMsgCount[previd];
 	}
 
 	if (rc) {
@@ -963,6 +1030,7 @@ void netEndFrame(void)
 				const bool needrel = netClientNeedReliableMove(g_NetLocalClient);
 				if (needrel || netClientNeedMove(g_NetLocalClient)) {
 					netmsgClcMoveWrite(needrel ? &g_NetMsgRel : &g_NetMsg);
+					g_NetLocalClient->sentmove = g_NetLocalClient->outmove[0];
 				}
 			}
 			if (g_NetNextUpdate <= g_NetTick) {
@@ -976,6 +1044,7 @@ void netEndFrame(void)
 					const bool needrel = netClientNeedReliableMove(cl);
 					if (needrel || netClientNeedMove(cl)) {
 						netmsgSvcPlayerMoveWrite(needrel ? &g_NetMsgRel : &g_NetMsg, cl);
+						cl->sentmove = cl->outmove[0];
 					}
 				}
 			}
@@ -985,7 +1054,7 @@ void netEndFrame(void)
 				netlagServerTick();
 				netcoopServerTick();
 				netmsgMpScoresTick();
-				g_NetNextUpdate = g_NetTick + g_NetServerUpdateRate;
+				g_NetNextUpdate = g_NetTick + netServerUpdateFrames();
 			}
 		}
 	}
@@ -1294,5 +1363,6 @@ PD_CONSTRUCTOR static void netConfigInit(void)
 	configRegisterInt("Net.Server.JoinInProgress", &g_NetServerJoinInProgress, 0, 1);
 	configRegisterInt("Net.Server.ResyncSecs", &g_NetServerResyncSecs, 0, 120);
 	configRegisterInt("Net.SmoothPlayers", &g_NetSmoothPlayers, 0, 1);
+	configRegisterInt("Net.Server.AutoUpdateFrames", &g_NetServerAutoUpdateRate, 0, 1);
 	configRegisterInt("Net.ShowPing", &g_NetShowPing, 0, 1);
 }

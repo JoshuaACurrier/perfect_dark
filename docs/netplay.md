@@ -143,6 +143,25 @@ there is any; the host sees the highest of the other players'. The ping is measu
 sending a snapshot to your input for it arriving back, so it is a frame or two higher than what a
 network tool would show. Loss is the share of the host's snapshots that never reached you.
 
+### Staying in sync, smoothness and bandwidth
+
+* **Self-healing.** Every 10 seconds (`Net.Server.ResyncSecs`, 0 = off) the host lists the pickups
+  that are gone or waiting to come back, the loose guns that exist and which doors are open. Each
+  client removes what it shouldn't have, asks the host for loose guns it is missing, and opens or
+  closes a door that was different two lists in a row. A repair is written to `pd.log` as
+  `NET: resync repaired: ...`, so the log shows whether a game drifted apart.
+* **Other players move smoothly.** Positions carry the sender's clock, and a remote player is shown
+  a little in the past, between two known positions. How far in the past adapts to how unevenly the
+  packets arrive: about 2 to 3 frames on a steady connection, more on a jittery one (the same
+  method as for simulants and guards). Lag compensation uses the delay each client reports.
+  `Net.SmoothPlayers=0` goes back to chasing the newest position.
+* **Bandwidth.** Movement messages are 39 bytes instead of 59. With four or more players the host
+  sends positions 30 times a second instead of 60 (`Net.Server.AutoUpdateFrames`, on by default;
+  clients still send their input every frame). A firing player's ammo is sent 10 times a second
+  instead of every frame. Measured with 4 players and 2 simulants over localhost: host upload
+  69 KB/s before, 24 KB/s after. For 8 players expect roughly 80 KB/s (0.7 Mbit/s) of upload on
+  the host.
+
 ### Misc
 
 * Everyone has to have the same ROM. The game only compares the file name, but different regions in one game will definitely break everything.

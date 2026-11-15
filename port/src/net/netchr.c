@@ -440,7 +440,7 @@ void netchrServerSend(void)
 	// at most 60 rounds a second (or fewer with Net.Server.UpdateFrames), however fast the host
 	// renders; the clients interpolate between them
 	const f32 now = netchrNow();
-	const f32 mininterval = (f32)(g_NetServerUpdateRate > 1 ? g_NetServerUpdateRate : 1) - 0.1f;
+	const f32 mininterval = (f32)netServerUpdateFrames() - 0.1f;
 	if (now - g_NetChrLastSend < mininterval) {
 		return;
 	}

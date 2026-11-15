@@ -102,12 +102,15 @@ struct netclient {
 	u8 playernum;
 
 	struct netplayermove outmove[2]; // last 2 outgoing player inputs, newest one first
+	struct netplayermove sentmove; // the last one that was actually sent
 	struct netplayermove inmove[2]; // last 2 incoming player inputs, newest one first
 	u32 inmovetick; // last inmove tick which was applied to the player
 	u32 outmoveack; // last acked outmove tick
 	u32 forcetick; // tick on which the client's position was forced, or 0 if not forcing
 	u32 lerpticks; // how many ticks we've been lerping the position
 	u8 jumppending; // host: a jump started in a move from this client, not yet applied
+	u8 statsdirty; // host: fired since the last SVC_PLAYER_STATS about this client
+	u32 nextstatstick; // host: earliest tick for the next one while they keep firing
 
 	// lag compensation and the ping readout (netlag.c)
 	f32 lagticks; // host: how old this client's view of us is when its input gets here, in 60ths (smoothed)
@@ -126,6 +129,14 @@ struct netclient {
 
 	u8 out_data[NET_BUFSIZE]; // buffer for out
 };
+
+// how many frames apart the host sends positions right now: Net.Server.UpdateFrames, or 2
+// (30 a second) once four or more players are in the match (Net.Server.AutoUpdateFrames)
+u32 netServerUpdateFrames(void);
+extern s32 g_NetServerAutoUpdateRate;
+
+// client, for the test tools: log how much of each kind of message arrived
+void netStatLogMessages(s32 secs);
 
 extern s32 g_NetMode;
 
