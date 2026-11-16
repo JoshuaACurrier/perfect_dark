@@ -96,6 +96,7 @@ static f32 g_FeedTimes[FEED_LINES];
 static s32 g_FeedNum = 0;
 
 static s32 g_ScoreboardHeld = false;
+static u32 g_ChatBlockUntil = 0; // g_NetTick until which the keys that closed the chat are still ignored
 
 static void nethudCopyName(char *dst, size_t dstlen, const char *src)
 {
@@ -124,6 +125,20 @@ void nethudReset(void)
 s32 nethudIsTyping(void)
 {
 	return g_ChatTyping;
+}
+
+// typing a chat line, or only just finished: the Enter that sent it (and an E still held)
+// must not reach the game or the menus
+s32 nethudBlocksInput(void)
+{
+	return g_NetMode && (g_ChatTyping || g_NetTick < g_ChatBlockUntil);
+}
+
+// in a Combat Simulator match the keyboard's Tab is the scoreboard key and nothing else
+s32 nethudTabReserved(void)
+{
+	return g_NetMode && g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME
+		&& g_Vars.normmplayerisrunning && !g_ChatTyping;
 }
 
 void nethudChatAdd(const char *text)
@@ -325,6 +340,7 @@ static void nethudServerRoster(void)
 
 static void nethudStopTyping(void)
 {
+	g_ChatBlockUntil = g_NetTick + 12;
 	g_ChatTyping = false;
 	g_ChatInput[0] = '\0';
 	g_ChatInputCol = 0;
@@ -341,6 +357,14 @@ void nethudTick(void)
 		g_ChatNum = 0;
 		g_ScoreboardHeld = false;
 		return;
+	}
+
+	// our name or character may have been changed in a menu since we connected
+	static f32 nextsettings = 0.f;
+	const f32 nowsecs = sysGetSeconds();
+	if (g_NetLocalClient->state == CLSTATE_LOBBY && (nowsecs >= nextsettings || nowsecs < nextsettings - 5.f)) {
+		nextsettings = nowsecs + 1.f;
+		netLobbyRefreshSettings();
 	}
 
 	if (g_NetMode == NETMODE_SERVER) {

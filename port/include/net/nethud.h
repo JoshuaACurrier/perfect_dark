@@ -22,6 +22,10 @@ Gfx *nethudRender(Gfx *gdl);
 
 // is the chat line being typed? (the game and menus get no input meanwhile)
 s32 nethudIsTyping(void);
+// ...or only just finished (the keys that sent it are still down)
+s32 nethudBlocksInput(void);
+// in a Combat Simulator match the keyboard's Tab is the scoreboard key and nothing else
+s32 nethudTabReserved(void);
 
 void nethudChatAdd(const char *text);
 void nethudKill(const struct mpchrconfig *attacker, const struct mpchrconfig *victim);

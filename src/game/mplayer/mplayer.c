@@ -809,6 +809,13 @@ s32 mpGetPlayerRankings(struct ranking *rankings)
 
 	// Populate 4 arrays with player info, sorted by highest score descending
 	for (i = 0; i < MAX_MPCHRS; i++) {
+#ifndef PLATFORM_N64
+		// (not the empty player slots a net match keeps for late joiners: they showed up
+		// as players called "Open" in the pause menu and on the end screens)
+		if (i < MAX_PLAYERS && netjoinIsVacant(i)) {
+			continue;
+		}
+#endif
 		if (g_MpSetup.chrslots & (1 << i)) {
 			mpchr = MPCHR(i);
 

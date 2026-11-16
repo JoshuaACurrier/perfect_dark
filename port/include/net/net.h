@@ -132,6 +132,9 @@ struct netclient {
 	u8 out_data[NET_BUFSIZE]; // buffer for out
 };
 
+// lobby: re-read our own name and character from the player config; a client tells the host
+void netLobbyRefreshSettings(void);
+
 // the prop with this sync id on this machine, or NULL
 struct prop *netPropBySyncId(u32 syncid);
 

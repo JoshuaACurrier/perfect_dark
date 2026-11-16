@@ -124,6 +124,15 @@ struct menuitem g_NetHostMenuItems[] = {
 		menuhandlerHostCoop,
 	},
 	{
+		// the host's cheats apply to everyone in the match
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_SELECTABLE_OPENSDIALOG | MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Cheats (For Everyone)\n",
+		0,
+		(void *)&g_CheatsMenuDialog,
+	},
+	{
 		MENUITEMTYPE_SEPARATOR,
 		0,
 		0,

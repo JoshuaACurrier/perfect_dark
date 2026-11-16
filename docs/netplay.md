@@ -128,11 +128,9 @@ During a Combat Simulator match:
 * the bar at the top shows the leading team or player, the time left and the score to reach, and
   your own team or place (`Score And Timer Bar`, `Game.MpScoreBar`);
 * kills are listed at the top left for a few seconds (`Kill Feed`, `Game.MpKillFeed`);
-* hold `Tab` for the scoreboard: every player and simulant with score, deaths and ping;
-* while you are dead and waiting, the view follows another living character from behind
-  (teammates first in team games, and your partner in co-op). The aim button moves to the next
-  one; the usual buttons respawn you (`Watch Others While Dead`, `Game.MpSpectate`). This is
-  done entirely on the watching player's own copy: nothing extra is sent.
+* hold `Tab` for the scoreboard: every player and simulant with score, deaths and ping. In a
+  match the keyboard's `Tab` only does this, even if it is also bound to Start; `Esc` (or Start
+  on a controller) opens the pause menu.
 
 `T`, `R` and `Tab` are fixed keys for now; if you have bound one of them to something else, both
 things happen.

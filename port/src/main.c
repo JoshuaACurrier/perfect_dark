@@ -200,7 +200,6 @@ PD_CONSTRUCTOR static void gameConfigInit(void)
 	configRegisterInt("Video.TexturePacks", &g_TexpackEnabled, 0, 1);
 	configRegisterString("Video.TexturePack", g_TexpackName, TEXPACK_MAX_NAME);
 	configRegisterInt("Game.MpAutoRespawn", &g_MpAutoRespawnSecs, 0, 30);
-	configRegisterInt("Game.MpSpectate", &g_MpSpectate, 0, 1);
 	configRegisterInt("Game.MpScoreBar", &g_NetHudScoreBar, 0, 1);
 	configRegisterInt("Game.MpKillFeed", &g_NetHudKillFeed, 0, 1);
 	configRegisterInt("Game.UnlockAllCheats", &g_CheatsUnlockAll, 0, 1);

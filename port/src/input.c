@@ -6,6 +6,10 @@
 #include <PR/os_cont.h>
 #include "platform.h"
 #include "input.h"
+
+// (net/nethud.h pulls in game types this file doesn't use)
+s32 nethudBlocksInput(void);
+s32 nethudTabReserved(void);
 #include "video.h"
 #include "config.h"
 #include "utils.h"
@@ -812,8 +816,14 @@ s32 inputInit(void)
 
 static inline s32 inputBindPressed(const s32 idx, const u32 ck)
 {
+	// (in a network match Tab is the scoreboard, whatever else it is bound to: by default
+	// that is Start, which put the pause menu and the scoreboard on top of each other)
+	const s32 tabreserved = nethudTabReserved();
 	for (s32 i = 0; i < INPUT_MAX_BINDS; ++i) {
 		if (binds[idx][ck][i]) {
+			if (tabreserved && binds[idx][ck][i] == VK_KEYBOARD_BEGIN + SDL_SCANCODE_TAB) {
+				continue;
+			}
 			if (inputKeyPressed(binds[idx][ck][i])) {
 				return 1;
 			}
@@ -853,7 +863,7 @@ s32 inputReadController(s32 idx, OSContPad *npad)
 		return 0;
 	}
 
-	if (textInput) {
+	if (textInput || nethudBlocksInput()) {
 		npad->stick_x = 0;
 		npad->stick_y = 0;
 		npad->rstick_x = 0;
@@ -1314,6 +1324,12 @@ static inline u32 inputContToContKey(const u32 cont)
 s32 inputButtonPressed(s32 idx, u32 contbtn)
 {
 	if (idx < 0 || idx >= INPUT_MAX_CONTROLLERS) {
+		return 0;
+	}
+
+	// a chat line is being typed: E and Enter are accept buttons to the menus, which would
+	// open whatever was highlighted behind the chat
+	if (nethudBlocksInput()) {
 		return 0;
 	}
 

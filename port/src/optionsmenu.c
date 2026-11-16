@@ -1735,19 +1735,6 @@ static MenuItemHandlerResult menuhandlerScoreBar(s32 operation, struct menuitem 
 	return 0;
 }
 
-static MenuItemHandlerResult menuhandlerSpectate(s32 operation, struct menuitem *item, union handlerdata *data)
-{
-	switch (operation) {
-	case MENUOP_GET:
-		return g_MpSpectate;
-	case MENUOP_SET:
-		g_MpSpectate = data->checkbox.value;
-		break;
-	}
-
-	return 0;
-}
-
 static MenuItemHandlerResult menuhandlerKillFeed(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
@@ -2145,14 +2132,6 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		(uintptr_t)"Kill Feed (Network Games)",
 		0,
 		menuhandlerKillFeed,
-	},
-	{
-		MENUITEMTYPE_CHECKBOX,
-		0,
-		MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"Watch Others While Dead (Network Games)",
-		0,
-		menuhandlerSpectate,
 	},
 	{
 		MENUITEMTYPE_SLIDER,

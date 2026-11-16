@@ -3883,11 +3883,6 @@ void playerTick(bool arg0)
 				&g_Vars.currentplayer->prop->pos,
 				g_Vars.currentplayer->prop->rooms);
 
-#ifndef PLATFORM_N64
-		// dead and waiting in a net game: watch someone else
-		hudextSpectateCamera();
-#endif
-
 		if (g_Vars.normmplayerisrunning == false
 				&& g_MissionConfig.iscoop
 				&& g_Vars.numaibuddies > 0
@@ -4987,7 +4982,6 @@ Gfx *playerRenderHud(Gfx *gdl)
 #ifndef PLATFORM_N64
 		gdl = hudextDrawTeamNames(gdl);
 		gdl = hudextDrawDeath(gdl);
-		gdl = hudextDrawSpectate(gdl);
 		gdl = netlagDrawPing(gdl);
 #endif
 		gdl = bgunDrawSight(gdl);

@@ -935,6 +935,27 @@ void netClientSyncRng(void)
 	}
 }
 
+// In the lobby: pick up a name or character changed in a menu since we connected. The
+// host's roster showed the old name until the first match, when the config is read again.
+void netLobbyRefreshSettings(void)
+{
+	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_LOBBY) {
+		return;
+	}
+
+	u8 old[sizeof(g_NetLocalClient->settings)];
+	const u8 team = g_NetLocalClient->settings.team;
+	memcpy(old, &g_NetLocalClient->settings, sizeof(old));
+	netClientReadConfig(g_NetLocalClient, 0);
+	g_NetLocalClient->settings.team = team;
+
+	if (g_NetMode == NETMODE_CLIENT && memcmp(old, &g_NetLocalClient->settings, sizeof(old)) != 0) {
+		netbufStartWrite(&g_NetMsgRel);
+		netmsgClcSettingsWrite(&g_NetMsgRel);
+		netSend(NULL, &g_NetMsgRel, true, NETCHAN_CONTROL);
+	}
+}
+
 void netClientSettingsChanged(void)
 {
 	if (g_NetMode != NETMODE_CLIENT || !g_NetLocalClient) {
