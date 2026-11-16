@@ -34,6 +34,16 @@ static s32 g_NetAutoDebugHud = -1;
 
 s32 g_MpAutoRespawnSecs = 5;
 
+// Is this the player sitting at this machine? In a net game "not remote" isn't enough:
+// the empty spare slots (netjoin.c) have nobody behind them and aren't remote either.
+static bool hudextIsOurPlayer(const struct player *pl)
+{
+	if (!g_NetMode) {
+		return !pl->isremote;
+	}
+	return g_NetLocalClient && pl == g_NetLocalClient->player;
+}
+
 s32 hudextRespawnSecs(void)
 {
 	if (g_NetMode == NETMODE_CLIENT) {
@@ -180,7 +190,7 @@ Gfx *hudextDrawDeath(Gfx *gdl)
 	char line2[64] = "";
 	char name[MAX_PLAYERNAME + 1];
 
-	if (!pl->isdead || !g_Vars.normmplayerisrunning || pl->isremote) {
+	if (!pl->isdead || !g_Vars.normmplayerisrunning || !hudextIsOurPlayer(pl)) {
 		return gdl;
 	}
 
@@ -259,7 +269,7 @@ Gfx *hudextDrawTeamNames(Gfx *gdl)
 	const bool teams = g_Vars.normmplayerisrunning && (g_MpSetup.options & MPOPTION_TEAMSENABLED);
 
 	// remote players' HUDs get "drawn" too on the host, for their timers; skip those
-	if (!PLAYER_EXTCFG().teamnames || (!coop && !teams) || me->isdead || !me->prop || me->isremote) {
+	if (!PLAYER_EXTCFG().teamnames || (!coop && !teams) || me->isdead || !me->prop || !hudextIsOurPlayer(me)) {
 		return gdl;
 	}
 
@@ -448,7 +458,7 @@ void hudextSpectateCamera(void)
 	struct player *pl = g_Vars.currentplayer;
 
 	// (this runs for every player in the match; the state below is the local one's)
-	if (!g_NetMode || pl->isremote) {
+	if (!g_NetMode || !hudextIsOurPlayer(pl)) {
 		return;
 	}
 
@@ -538,7 +548,7 @@ Gfx *hudextDrawSpectate(Gfx *gdl)
 {
 	struct player *pl = g_Vars.currentplayer;
 
-	if (!g_SpecActive || pl->isremote || !pl->isdead || !hudextSpecProp(g_SpecTarget)) {
+	if (!g_SpecActive || !hudextIsOurPlayer(pl) || !pl->isdead || !hudextSpecProp(g_SpecTarget)) {
 		return gdl;
 	}
 

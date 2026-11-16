@@ -160,7 +160,22 @@ s32 footstepChooseSound(struct chrdata *chr, s32 footstepindex)
 // the speakers. In a net game every player has their own.
 #ifndef PLATFORM_N64
 s32 g_FootstepsPlayed = 0; // for the net test tools
+s32 g_FootstepsOwnBody = 0; // ...of which from the local player's own third-person body
 #endif
+
+// In a net game the third-person bodies of players play these animation footsteps, which
+// is how you hear the others. Your own body does too whenever someone else's view has it
+// on screen, but your own steps already come from bmoveTick: without this you hear every
+// step twice.
+static bool footstepIsOwnBody(const struct chrdata *chr)
+{
+#ifndef PLATFORM_N64
+	return g_NetMode && g_NetLocalClient && g_NetLocalClient->player
+		&& chr->prop && chr->prop == g_NetLocalClient->player->prop;
+#else
+	return false;
+#endif
+}
 
 static bool footstepsAllowed(void)
 {
@@ -216,11 +231,15 @@ void footstepCheckDefault(struct chrdata *chr)
 
 					soundnum = footstepChooseSound(chr, i);
 
-					if (soundnum != -1 && chr->footstep != 0) {
+					if (soundnum != -1 && chr->footstep != 0 && !footstepIsOwnBody(chr)) {
 #if VERSION >= VERSION_NTSC_1_0
 						psCreate(NULL, chr->prop, soundnum, -1, -1, PSFLAG_0400, 0, PSTYPE_FOOTSTEP, NULL, -1, NULL, -1, -1, -1, -1);
 #ifndef PLATFORM_N64
 						++g_FootstepsPlayed;
+						if (g_Vars.players[0] && chr->prop == g_Vars.players[0]->prop) {
+							// (should stay 0: our own steps come from bmoveTick, not from our body)
+							++g_FootstepsOwnBody;
+						}
 #endif
 #else
 						psCreate(NULL, chr->prop, soundnum, -1, -1, 0, 0, PSTYPE_NONE, NULL, -1, NULL, -1, -1, -1, -1);
@@ -299,7 +318,7 @@ void footstepCheckMagic(struct chrdata *chr)
 
 				soundnum = footstepChooseSound(chr, index);
 
-				if (soundnum != -1 && chr->footstep != 0) {
+				if (soundnum != -1 && chr->footstep != 0 && !footstepIsOwnBody(chr)) {
 #if VERSION >= VERSION_NTSC_1_0
 					psCreate(NULL, chr->prop, soundnum, -1,
 							-1, PSFLAG_0400, 0, PSTYPE_FOOTSTEP, NULL, -1, NULL, -1, -1, -1, -1);

@@ -1030,6 +1030,13 @@ void netStartFrame(void)
 			default:
 				break;
 		}
+
+		// An event can end the connection (the host left, or a bad message): the ENet host
+		// is gone then. Going round again would read events from it and crash, which is
+		// what happened to a client when the host disconnected with packets still queued.
+		if (!g_NetMode || !g_NetHost) {
+			return;
+		}
 	}
 
 	netbufStartWrite(&g_NetMsg);

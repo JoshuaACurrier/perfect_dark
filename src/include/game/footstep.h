@@ -10,6 +10,7 @@ void footstepCheckMagic(struct chrdata *chr);
 
 #ifndef PLATFORM_N64
 extern s32 g_FootstepsPlayed;
+extern s32 g_FootstepsOwnBody;
 #endif
 
 #endif
