@@ -60,6 +60,8 @@
 #include "net/net.h"
 #include "net/netmsg.h"
 
+s32 g_BgunNetHitSounds = 0; // for the net test tools: hits on others played from where they are
+
 /**
  * A network game runs the other players' guns on this machine too, with the same
  * code as our own. Their gun's sounds (shots, reloads, drawing a weapon) must come
@@ -11418,6 +11420,20 @@ void bgunPlayPropHitSound(struct gset *gset, struct prop *prop, s32 texturenum)
 				soundnum = sounds[rand1 % ARRAYCOUNT(sounds)];
 			}
 
+#ifndef PLATFORM_N64
+			if (soundnum != -1 && g_NetMode && (!g_NetLocalClient || !g_NetLocalClient->player
+					|| prop != g_NetLocalClient->player->prop)) {
+				// Someone other than us was hit. The original plays this as a plain sound with
+				// a volume worked out from the distance: no direction, nothing muffled by walls,
+				// and a punch carries so far that anyone's punches sounded like our own. In a
+				// net game it comes from the one who was hit, like every other sound out there;
+				// fists and pistol whips don't carry as far as gunshot hits.
+				const bool melee = (soundnum == SFX_002F || soundnum == SFX_0030 || soundnum == SFX_0031);
+				psCreate(NULL, prop, soundnum, -1, -1, 0, 0, PSTYPE_NONE, 0, -1.0f, 0, -1,
+					melee ? 150.0f : -1.0f, melee ? 1000.0f : -1.0f, melee ? 1400.0f : -1.0f);
+				++g_BgunNetHitSounds;
+			} else
+#endif
 			if (soundnum != -1) {
 				psGetTheoreticalVolPan(&prop->pos, prop->rooms, soundnum, &vol, &pan);
 

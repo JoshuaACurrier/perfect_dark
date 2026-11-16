@@ -36,6 +36,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-autokill SECS` | Host: every SECS seconds, shoot the guard nearest to one of the players (alternating), to test deaths, drops and alarms. |
 | `--net-autoalarm SECS` | Host: turn on the alarm and a running 60 s countdown at SECS, both off at 2×SECS (checks the mission state sync; the client logs `NET: mission state: ...`). |
 | `--net-weapon N` | Host: everyone spawns with multiplayer weapon N (`MPWEAPON_*`, e.g. `0x17` rocket launcher, `0x0c` RCP-120, `0x15` FarSight) and there is no score limit. On any copy it also logs `NET: cloak: prop N on/off` when a player's cloak changes, to compare between copies. |
+| `--net-unarmed` | Host: no guns on the map, so everyone punches (for the melee hit sounds). At `--net-autoquit` each copy logs how many hit sounds it played from the victim's position. |
 | `--net-altfire` | Keeps the local player's gun on its secondary function and holds the aim button. |
 | `--net-desynctest` | Host: loses every other "this was picked up or removed" message. Client: deletes a loose gun after each resync. Gives the 10-second resync something to repair; the client logs `NET: resync repaired: ...` and the host `client N asked for ... missing gun(s)`. Without the flag a healthy match logs no repairs. |
 | `--net-cheats MASK` | Host: turn on these cheats for the auto-started match (bit N = `CHEAT_*` number N, e.g. `0x890` DK Mode + Small Characters + Unlimited Ammo); clients log `NET: host cheats ...`. |

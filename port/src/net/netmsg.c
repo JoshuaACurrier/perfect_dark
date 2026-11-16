@@ -1825,8 +1825,10 @@ u32 netmsgSvcChrDamageRead(struct netbuf *src, struct netclient *srccl)
 		gset = &gsetvalue;
 	}
 
-	struct prop *aprop = (flags & (1 << 3)) ? netbufReadPropPtr(src) : NULL;
-	struct prop *prop2 = (flags & (1 << 4)) ? netbufReadPropPtr(src) : NULL;
+	// (these two are often things only the host has an id for, like the gun in the attacker's
+	// hand: not finding them is normal)
+	struct prop *aprop = (flags & (1 << 3)) ? netPropBySyncId(netbufReadU32(src)) : NULL;
+	struct prop *prop2 = (flags & (1 << 4)) ? netPropBySyncId(netbufReadU32(src)) : NULL;
 
 	s16 arg11[3], *arg11ptr = NULL;
 	if (flags & (1 << 5)) {

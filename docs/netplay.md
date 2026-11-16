@@ -97,6 +97,13 @@ simply starts as it is.
 Everyone in a game needs the same build. If joining says "Protocol or version mismatch", both
 sides should close the game and start `Play.bat` again.
 
+### Hits on other characters
+
+When someone other than you is hit (a punch, a pistol whip, a bullet), the hit sound comes from the
+one who was hit: it has a direction, fades with distance and is muffled by walls. The original
+plays it as a plain sound with only a volume, and a punch carried so far that anyone's punches
+sounded like your own. Punches now carry about 14 metres. Hits on you sound as before.
+
 ### Other players' guns
 
 The other players' gun sounds (shots, reloads, drawing a weapon) come from where those players

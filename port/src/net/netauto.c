@@ -224,6 +224,15 @@ static void netAutoStartMatch(void)
 		g_MpSetup.scenario = g_NetAutoScenario;
 	}
 
+	if (sysArgCheck("--net-unarmed")) {
+		// no guns on the map: everyone punches
+		for (s32 i = 0; i < ARRAYCOUNT(g_MpSetup.weapons); ++i) {
+			g_MpSetup.weapons[i] = MPWEAPON_NONE;
+		}
+		g_MpSetup.scorelimit = 100;
+		g_MpSetup.teamscorelimit = 400;
+	}
+
 	if (g_NetAutoWeapon >= 0) {
 		// everyone spawns with this weapon; no score limit
 		g_MpSetup.options |= MPOPTION_SPAWNWITHWEAPON;
@@ -380,6 +389,10 @@ static void netAutoTickQuit(void)
 			g_NetAutoQuitSecs, netStatBytesSent(), netStatBytesSent() / g_NetAutoQuitSecs,
 			netStatBytesReceived(), netStatBytesReceived() / g_NetAutoQuitSecs);
 		netStatLogMessages(g_NetAutoQuitSecs);
+		{
+			extern s32 g_BgunNetHitSounds;
+			sysLogPrintf(LOG_NOTE, "NET: hit sounds played from the victim's position: %d", g_BgunNetHitSounds);
+		}
 		sysLogPrintf(LOG_NOTE, "NET: footsteps played: %d (%d from our own body, should be 0)", g_FootstepsPlayed, g_FootstepsOwnBody);
 		sysLogPrintf(LOG_NOTE, "NET: 3D audio: %u voice blocks rendered binaurally", g_MixerSpatialBlocks);
 		if (g_NetMode == NETMODE_SERVER) {
