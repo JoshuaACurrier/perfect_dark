@@ -25,7 +25,8 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-autostart N` | Host: start the match once N players (including the host) are in the lobby. |
 | `--net-stage NUM` | Host: stage for the auto-started match (e.g. `0x1f` Complex). |
 | `--net-sims N`, `--net-simdiff D` | Host: number of Simulants and their difficulty (0 meat .. 5 dark). |
-| `--net-scenario N` | Host: scenario (0 combat, 1 hold the briefcase, ...). |
+| `--net-scenario N` | Host: scenario (0 combat, 1 hold the briefcase, 2 hacker central, 3 pop a cap, 4 king of the hill, 5 capture the case). Compare the `NET: scenario:` lines of each copy's log. |
+| `--net-hilltime SECS` | Host: King of the Hill hold time on top of the game's 10 seconds (0 makes the hill score and move often). |
 | `--net-coop STAGE`, `--net-difficulty N` | Host: start a co-op mission instead (e.g. `0x30` Defection; 0 Agent, 1 Special Agent, 2 Perfect Agent). |
 | `--net-autoabort SECS` | Host: abort the mission after SECS seconds, to test the end screens. |
 | `--net-rounds N` | Host: auto-start up to N matches in a row; after each one ends the host skips its end screens and goes back to the lobby after 5 s. `--net-sims` simulants are only created for the first match, so later ones show whether the setup carried over. |

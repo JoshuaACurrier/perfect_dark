@@ -43,8 +43,7 @@ Limits for now:
 * Combat Simulator only. In a co-op mission, or when no slot is free, you wait in the lobby (`Match in
   progress`, chat still works) and play from the next match.
 * A late joiner looks like the slot's default character to the others until the next match.
-* Scenario state (the hill, flags, the briefcase holder and so on) and broken glass are not sent, so
-  those can look wrong for a late joiner in the scenarios that use them.
+* Broken glass is not sent, so a late joiner sees windows whole that others see broken.
 * `Net.Server.JoinInProgress=0` on the host switches all of this off (no spare slots, late joiners
   wait for the next match).
 
@@ -155,6 +154,15 @@ network tool would show. Loss is the share of the host's snapshots that never re
   client removes what it shouldn't have, asks the host for loose guns it is missing, and opens or
   closes a door that was different two lists in a row. A repair is written to `pd.log` as
   `NET: resync repaired: ...`, so the log shows whether a game drifted apart.
+* **Scenarios follow the host.** In King of the Hill, Pop a Cap, Hold the Briefcase, Hacker Central
+  and Capture the Case the host decides and tells everyone (`SVC_SCENARIO`, when something changes,
+  every 10 seconds anyway, and to a late joiner): where the hill is, who holds it and when it
+  scores; who the Pop a Cap victim is and its points; who carries the briefcase, the uplink or a
+  team's case; Hacker Central download points; the host's hill time. Before this each machine
+  ran the scenario by itself with its own random numbers and player numbering, so the hill could
+  move to different rooms on different machines and clients disagreed about the victim. Empty
+  spare slots are never the victim. `pd.log` has a `NET: scenario: ...` line for every change,
+  worded the same on every machine so logs can be compared.
 * **Other players move smoothly.** Positions carry the sender's clock, and a remote player is shown
   a little in the past, between two known positions. How far in the past adapts to how unevenly the
   packets arrive: about 2 to 3 frames on a steady connection, more on a jittery one (the same

@@ -38,6 +38,7 @@
 #define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)
 #define SVC_SLOT          0x64 // a player slot got a new owner mid-match, or lost it (netjoin.c)
 #define SVC_RESYNC        0x65 // what exists on the host right now, so clients can repair differences (netjoin.c)
+#define SVC_SCENARIO      0x66 // Combat Simulator scenario state: the hill, the victim, who has the briefcase (netscen.c)
 #define SVC_NETINFO       0x63 // who is connected: names, ping, packet loss, ready marks (nethud.c)
 
 #define CLC_BAD      0x00 // trash

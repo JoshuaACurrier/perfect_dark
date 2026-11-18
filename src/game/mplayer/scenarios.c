@@ -36,6 +36,11 @@
 #include "lib/collision.h"
 #include "data.h"
 #include "types.h"
+#ifndef PLATFORM_N64
+#include "net/net.h"
+#include "net/netjoin.h"
+#include "net/netscen.h"
+#endif
 
 /**
  * There are six multiplayer scenarios:

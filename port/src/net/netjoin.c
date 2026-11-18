@@ -20,6 +20,7 @@
 #include "net/netbuf.h"
 #include "net/netmsg.h"
 #include "net/netjoin.h"
+#include "net/netscen.h"
 
 extern s32 g_StageTimeElapsed60;
 extern f32 g_StageTimeElapsed1f;
@@ -589,6 +590,8 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		}
 	}
 
+	// the hill, the victim, who is carrying the briefcase (after the props it refers to)
+	netscenWrite(buf);
 	netmsgSvcMpScoresWrite(buf);
 	netjoinFlush(joiner, buf, total);
 

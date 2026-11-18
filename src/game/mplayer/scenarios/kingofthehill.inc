@@ -211,6 +211,95 @@ void kohInitProps(void)
 	roomSetLightOp(g_ScenarioData.koh.hillrooms[0], LIGHTOP_HIGHLIGHT, 0, 0, 0);
 }
 
+#ifndef PLATFORM_N64
+// Network games: the host decides who holds the hill, when it scores and where it moves
+// to, and tells the clients (port/src/net/netscen.c).
+s32 g_KohNetDual = 0;    // two teams are in the hill, so its timer is stopped
+u8 g_KohNetScoreSeq = 0; // goes up each time the hill is scored
+
+static void kohNetSetHill(s32 hillindex)
+{
+	struct pad pad;
+	s32 padnum = 0;
+
+	roomSetLightOp(g_ScenarioData.koh.hillrooms[0], LIGHTOP_NONE, 0, 0, 0);
+
+	g_ScenarioData.koh.hillindex = hillindex;
+
+	if (g_ScenarioData.koh.hillcount >= 2) {
+		padnum = g_ScenarioData.koh.hillpads[hillindex];
+	}
+
+	padUnpack(padnum, PADFIELD_POS | PADFIELD_ROOM, &pad);
+
+	g_ScenarioData.koh.hillrooms[0] = pad.room;
+	g_ScenarioData.koh.hillrooms[1] = -1;
+	g_ScenarioData.koh.hillpos.x = pad.pos.x;
+	g_ScenarioData.koh.hillpos.y = pad.pos.y;
+	g_ScenarioData.koh.hillpos.z = pad.pos.z;
+	g_ScenarioData.koh.hillpos.y = cdFindFloorYColourTypeAtPos(&g_ScenarioData.koh.hillpos, g_ScenarioData.koh.hillrooms, NULL, NULL);
+
+	roomSetLightOp(g_ScenarioData.koh.hillrooms[0], LIGHTOP_HIGHLIGHT, 0, 0, 0);
+}
+
+/**
+ * Client: take the hill's state from the host, with the sounds and messages the
+ * host's own kohTick made for the same changes.
+ */
+void kohNetApply(s32 hillindex, s32 occupiedteam, s32 movehill, s32 dual, s32 elapsed240, s32 scoreseq)
+{
+	char text[64];
+	s32 i;
+
+	if (g_ScenarioData.koh.hillindex == -1 || hillindex < 0
+			|| hillindex >= (g_ScenarioData.koh.hillcount > 1 ? g_ScenarioData.koh.hillcount : 1)
+			|| occupiedteam < -1 || occupiedteam >= MAX_TEAMS) {
+		return;
+	}
+
+	if ((u8)scoreseq != g_KohNetScoreSeq) {
+		// the team that held it until now scored
+		const s32 team = g_ScenarioData.koh.occupiedteam;
+
+		g_KohNetScoreSeq = (u8)scoreseq;
+
+		if (team != -1) {
+			sndStart(var80095200, SFX_MP_SCOREPOINT, 0, -1, -1, -1, -1, -1);
+
+			for (i = 0; i < PLAYERCOUNT(); i++) {
+				if (g_MpAllChrPtrs[i] && radarGetTeamIndex(g_MpAllChrPtrs[i]->team) == team) {
+					scenarioCreateHudmsg(i, langGet(L_MPWEAPONS_020)); // "King of the Hill!"
+				}
+			}
+		}
+	}
+
+	if (hillindex != g_ScenarioData.koh.hillindex) {
+		kohNetSetHill(hillindex);
+	}
+
+	if (occupiedteam != g_ScenarioData.koh.occupiedteam && occupiedteam != -1 && !movehill) {
+		sndStart(var80095200, SFX_MP_HILLENTERED, 0, -1, -1, -1, -1, -1);
+
+		// "%has captured the Hill!"
+		sprintf(text, langGet(L_MPWEAPONS_022), g_BossFile.teamnames[occupiedteam]);
+
+		for (i = 0; i < PLAYERCOUNT(); i++) {
+			if (g_MpAllChrPtrs[i] && radarGetTeamIndex(g_MpAllChrPtrs[i]->team) == occupiedteam) {
+				scenarioCreateHudmsg(i, langGet(L_MPWEAPONS_021)); // "We have the Hill!"
+			} else {
+				scenarioCreateHudmsg(i, text);
+			}
+		}
+	}
+
+	g_ScenarioData.koh.occupiedteam = occupiedteam;
+	g_ScenarioData.koh.movehill = movehill ? true : false;
+	g_ScenarioData.koh.elapsed240 = elapsed240;
+	g_KohNetDual = dual;
+}
+#endif
+
 /**
  * A match for this function has only been possible by making heavy reuse of
  * variables, but this impacts readability significantly.
@@ -254,6 +343,35 @@ void kohTick(void)
 	}
 
 	dualoccupancy = 0;
+
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_CLIENT) {
+		// the host decides; here the timer just keeps running and the colour follows
+		if (g_ScenarioData.koh.movehill) {
+			targetr = 1;
+			targetg = 1;
+			targetb = 1;
+		} else {
+			if (g_ScenarioData.koh.occupiedteam == -1) {
+				targetr = 0.25f;
+				targetg = 1;
+				targetb = 0.25f;
+			} else {
+				u32 colour = g_TeamColours[g_ScenarioData.koh.occupiedteam];
+				s32 max = g_Vars.mphilltime * TICKS(240) + TICKS(2400);
+				s32 elapsed = g_ScenarioData.koh.elapsed240 + (g_KohNetDual ? 0 : g_Vars.lvupdate240);
+
+				g_ScenarioData.koh.elapsed240 = elapsed > max ? max : elapsed;
+
+				targetr = ((s32)(colour >> 24 & 0xff) + 0xff) * (1.0f / 512.0f);
+				targetg = ((s32)(colour >> 16 & 0xff) + 0xff) * (1.0f / 512.0f);
+				targetb = ((s32)(colour >> 8 & 0xff) + 0xff) * (1.0f / 512.0f);
+			}
+		}
+
+		goto tween;
+	}
+#endif
 
 	if (g_ScenarioData.koh.movehill) {
 		// The hill is moving, but first it needs to be returned to the natural
@@ -459,6 +577,9 @@ void kohTick(void)
 					if (g_ScenarioData.koh.elapsed240 >= g_Vars.mphilltime * TICKS(240) + TICKS(2400)) {
 						// Scored a point
 						sndStart(var80095200, SFX_MP_SCOREPOINT, 0, -1, -1, -1, -1, -1);
+#ifndef PLATFORM_N64
+						g_KohNetScoreSeq++;
+#endif
 
 						// @bug: There is no check for a chr being dead here.
 						// If a player dies in the hill and waits on the
@@ -516,6 +637,10 @@ void kohTick(void)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	g_KohNetDual = dualoccupancy;
+tween:
+#endif
 	// Tween the colour components towards the target colour.
 	// @bug: This increments using g_Vars.diffframe60, which is updated while
 	// the game is paused. Because of this, if you pause as soon as a hill is

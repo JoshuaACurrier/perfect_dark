@@ -13,6 +13,7 @@
 #include "net/netlag.h"
 #include "net/nethud.h"
 #include "net/netjoin.h"
+#include "net/netscen.h"
 #include "net/netcoop.h"
 #include "types.h"
 #include "constants.h"
@@ -910,6 +911,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_NETINFO: rc = nethudRosterRead(&cl->in, cl); break;
 			case SVC_SLOT: rc = netjoinSlotRead(&cl->in, cl); break;
 			case SVC_RESYNC: rc = netjoinResyncRead(&cl->in, cl); break;
+			case SVC_SCENARIO: rc = netscenRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -1079,6 +1081,7 @@ void netEndFrame(void)
 	// empty player slots stay down; the host lets waiting clients into a running match
 	// (now, so that what it tells them comes after everything already sent)
 	netjoinTick();
+	netscenLogState();
 	netjoinServerTick();
 
 	if (g_NetLocalClient->state == CLSTATE_GAME && g_NetLocalClient->player && g_NetLocalClient->player->prop) {
@@ -1112,6 +1115,7 @@ void netEndFrame(void)
 				netlagServerTick();
 				netcoopServerTick();
 				netmsgMpScoresTick();
+				netscenServerTick();
 				g_NetNextUpdate = g_NetTick + netServerUpdateFrames();
 			}
 		}

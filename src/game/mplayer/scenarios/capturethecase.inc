@@ -158,7 +158,20 @@ s32 ctcNumProps(void)
 
 void ctcTick(void)
 {
-	// empty
+#ifndef PLATFORM_N64
+	// ctcInitProps folds every team into the four that have a case, but a Simulant made
+	// before that kept its old team: its AI then looked up a fifth case and crashed.
+	s32 i;
+
+	for (i = 0; i < g_MpNumChrs; i++) {
+		struct chrdata *chr = g_MpAllChrPtrs[i];
+		struct mpchrconfig *mpchr = g_MpAllChrConfigPtrs[i];
+
+		if (chr && mpchr && mpchr->team < ARRAYCOUNT(g_ScenarioData.ctc.tokens) && chr->team != (1 << mpchr->team)) {
+			chr->team = 1 << mpchr->team;
+		}
+	}
+#endif
 }
 
 void ctcTickChr(struct chrdata *chr)

@@ -390,6 +390,10 @@ void htmTick(void)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	// (a client gets a new uplink from the host)
+	if (g_NetMode != NETMODE_CLIENT)
+#endif
 	if (g_ScenarioData.htm.uplink == NULL) {
 		htbCreateUplink();
 	}
@@ -541,6 +545,10 @@ void htmTickChr(struct chrdata *chr)
 			*time += g_Vars.lvupdate240;
 
 			if (*time > 20 * TICKS(240)) {
+#ifndef PLATFORM_N64
+				// (a client gets the points from the host)
+				if (g_NetMode != NETMODE_CLIENT)
+#endif
 				data->numpoints[playernum]++;
 				data->playernuminrange = playernum;
 

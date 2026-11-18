@@ -7,6 +7,7 @@
 //   --net-sims N             (host) number of simulants in the auto-started match
 //   --net-simdiff N          (host) simulant profile: 0 meat, 1 easy, 2 normal, 3 hard, 4 perfect, 5 dark
 //   --net-scenario N         (host) MPSCENARIO_*
+//   --net-hilltime SECS      (host) King of the Hill: seconds to hold the hill for a point, on top of the game's 10
 //   --net-coop STAGE         (host) start a co-op mission on STAGE (e.g. 0x30 Defection) instead of Combat Sim
 //   --net-difficulty N       (host) co-op difficulty: 0 agent, 1 special agent, 2 perfect agent
 //   --net-teams              (host) teams on: the players and every other simulant against the rest
@@ -222,6 +223,11 @@ static void netAutoStartMatch(void)
 
 	if (g_NetAutoScenario >= 0) {
 		g_MpSetup.scenario = g_NetAutoScenario;
+		if (g_NetAutoScenario == MPSCENARIO_KINGOFTHEHILL) {
+			// so a test sees the hill move
+			g_MpSetup.options |= MPOPTION_KOH_MOBILEHILL;
+			g_Vars.mphilltime = sysArgGetInt("--net-hilltime", g_Vars.mphilltime);
+		}
 	}
 
 	if (sysArgCheck("--net-unarmed")) {

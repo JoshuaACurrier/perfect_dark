@@ -334,6 +334,10 @@ void htbTick(void)
 		}
 	}
 
+#ifndef PLATFORM_N64
+	// (a client gets a new briefcase from the host)
+	if (g_NetMode != NETMODE_CLIENT)
+#endif
 	if (g_ScenarioData.htb.token == NULL) {
 		htbCreateToken();
 	}

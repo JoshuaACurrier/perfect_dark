@@ -190,9 +190,50 @@ bool pacHighlightProp(struct prop *prop, s32 *colour)
 	return false;
 }
 
+#ifndef PLATFORM_N64
+void pacAnnounceVictim(void);
+#endif
+
 void pacApplyNextVictim(void)
 {
 	struct scenariodata_pac *data = &g_ScenarioData.pac;
+#ifndef PLATFORM_N64
+	s32 tries;
+
+	// (a network match has spare player slots nobody is playing: never the victim)
+	for (tries = 0; tries < g_MpNumChrs; tries++) {
+		data->victimindex++;
+
+		if (data->victimindex >= g_MpNumChrs) {
+			data->victimindex = 0;
+		}
+
+		if (!netjoinIsVacant(data->victims[data->victimindex])) {
+			break;
+		}
+	}
+
+	data->age240 = 0;
+
+	pacAnnounceVictim();
+}
+
+/**
+ * Tell every player here who the victim is.
+ */
+void pacAnnounceVictim(void)
+{
+	struct scenariodata_pac *data = &g_ScenarioData.pac;
+	s32 vplayernum;
+	char text[64];
+	s32 i;
+
+	if (data->victimindex < 0 || data->victimindex >= g_MpNumChrs) {
+		return;
+	}
+
+	vplayernum = data->victims[data->victimindex];
+#else
 	s32 vplayernum;
 	char text[64];
 	s32 i;
@@ -206,6 +247,7 @@ void pacApplyNextVictim(void)
 	data->age240 = 0;
 
 	vplayernum = data->victims[data->victimindex];
+#endif
 
 	for (i = 0; i < PLAYERCOUNT(); i++) {
 		if (vplayernum == i) {
@@ -246,6 +288,10 @@ void pacHandleDeath(s32 aplayernum, s32 vplayernum)
 				}
 			}
 
+#ifndef PLATFORM_N64
+			// (a client hears about the next victim from the host)
+			if (g_NetMode != NETMODE_CLIENT)
+#endif
 			pacApplyNextVictim();
 		} else {
 #if VERSION >= VERSION_NTSC_1_0
@@ -258,6 +304,23 @@ void pacHandleDeath(s32 aplayernum, s32 vplayernum)
 void pacTick(void)
 {
 	struct scenariodata_pac *data = &g_ScenarioData.pac;
+
+#ifndef PLATFORM_N64
+	if (g_NetMode == NETMODE_CLIENT) {
+		// the host picks victims and gives the points; the timer on the HUD keeps running
+		if (data->victimindex >= 0 && (data->victims[data->victimindex] >= PLAYERCOUNT()
+				|| g_Vars.players[data->victims[data->victimindex]]->isdead == false)) {
+			u32 age = data->age240 + g_Vars.lvupdate240;
+			data->age240 = age > (u32)TICKS(240 * 60) ? TICKS(240 * 60) : age;
+		}
+		return;
+	}
+
+	if (data->victimindex >= 0 && netjoinIsVacant(data->victims[data->victimindex])) {
+		// the victim left the match
+		pacApplyNextVictim();
+	}
+#endif
 
 	if (data->victimindex == -1) {
 		pacApplyNextVictim();
