@@ -43,7 +43,11 @@ Limits for now:
 * Combat Simulator only. In a co-op mission, or when no slot is free, you wait in the lobby (`Match in
   progress`, chat still works) and play from the next match.
 * A late joiner looks like the slot's default character to the others until the next match.
-* Broken glass is not sent, so a late joiner sees windows whole that others see broken.
+* A late joiner plays as their own character: the spare slot they take over is rebuilt with their
+  body and head on every machine (custom camera heads excepted).
+* Broken glass is the same for everyone, late joiners included. In Combat Simulator a broken pane
+  comes back 20 seconds after it is cleared away; that used to happen only once someone on that
+  machine came near it, so machines disagreed about which panes were back.
 * `Net.Server.JoinInProgress=0` on the host switches all of this off (no spare slots, late joiners
   wait for the next match).
 

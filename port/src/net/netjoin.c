@@ -32,6 +32,7 @@ s32 g_NetQuietDeath = false;
 // by local player number
 static u8 g_Vacant[MAX_PLAYERS];
 static u8 g_Hold[MAX_PLAYERS]; // host: has a new owner who is still loading
+static u8 g_Rebody[MAX_PLAYERS]; // the slot's body or head changed: rebuild its character
 
 // body, head and team of the empty slots, by server player number (from the host)
 static u8 g_VacantMask = 0;
@@ -239,6 +240,7 @@ void netjoinOnPlayersAllocated(void)
 {
 	memset(g_Vacant, 0, sizeof(g_Vacant));
 	memset(g_Hold, 0, sizeof(g_Hold));
+	memset(g_Rebody, 0, sizeof(g_Rebody));
 
 	if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
 		return;
@@ -336,10 +338,89 @@ static void netjoinPark(s32 p)
 	}
 }
 
+// A spare slot was loaded with a stand-in body. Its new owner's own body and head go in the
+// slot's config; the character is rebuilt from it on the next tick.
+static void netjoinSetBody(s32 p, u8 body, u8 head)
+{
+	struct mpchrconfig *cfg = &g_PlayerConfigsArray[p].base;
+	if (body >= ARRAYCOUNT(g_MpBodies) || head >= ARRAYCOUNT(g_MpHeads)) {
+		// (custom camera heads only exist on their owner's machine)
+		return;
+	}
+	if (cfg->mpbodynum != body || cfg->mpheadnum != head) {
+		cfg->mpbodynum = body;
+		cfg->mpheadnum = head;
+		g_Rebody[p] = 1;
+	}
+}
+
+// the same thing counter-op does when a player takes over a guard: drop the model, build a new one
+static void netjoinRebuildBody(s32 p)
+{
+	struct player *pl = g_Vars.players[p];
+	if (!pl || !pl->prop || !pl->prop->chr || !pl->haschrbody || !pl->prop->chr->model) {
+		return;
+	}
+
+	const s32 prevplayernum = g_Vars.currentplayernum;
+	setCurrentPlayerNum(p);
+	pl->haschrbody = false;
+	pl->model00d4 = NULL;
+	chrRemove(pl->prop, false);
+	playerTickChrBody();
+	setCurrentPlayerNum(prevplayernum);
+
+	const struct chrdata *chr = pl->prop->chr;
+	sysLogPrintf(LOG_NOTE, "NET: player slot %d now has body %d, head %d", p, chr->bodynum, chr->headnum);
+}
+
+// in the log of every machine, by client id, so they can be compared
+static void netjoinLogBodies(void)
+{
+	static char prev[256];
+	char line[256];
+	s32 len = 0;
+	line[0] = '\0';
+	for (s32 i = 0; i < NET_MAX_CLIENTS && len < (s32)sizeof(line) - 24; ++i) {
+		const struct netclient *cl = &g_NetClients[i];
+		if (cl->state >= CLSTATE_GAME && cl->player && cl->player->prop && cl->player->prop->chr) {
+			const struct chrdata *chr = cl->player->prop->chr;
+			len += snprintf(line + len, sizeof(line) - len, " %d=%d/%d", i, chr->bodynum, chr->headnum);
+		}
+	}
+	if (strcmp(line, prev)) {
+		strcpy(prev, line);
+		sysLogPrintf(LOG_NOTE, "NET: bodies (client=body/head):%s", line);
+	}
+}
+
 void netjoinTick(void)
 {
 	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME || !g_Vars.normmplayerisrunning) {
 		return;
+	}
+
+	if (g_Vars.tickmode == TICKMODE_NORMAL && g_Vars.lvframenum > 2) {
+		for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+			if (g_Rebody[p] && netjoinSlotInMatch(p)) {
+				g_Rebody[p] = 0;
+				netjoinRebuildBody(p);
+			}
+		}
+		netjoinLogBodies();
+
+		// Broken glass comes back 20 seconds after it is cleared away, and it is only cleared
+		// away when it next ticks, which a pane nobody on this machine is near never does. So
+		// machines disagreed about which panes were back. Clear it away at once everywhere.
+		for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+			struct prop *prop = &g_Vars.props[i];
+			if (prop->type == PROPTYPE_OBJ && prop->obj && !prop->parent && prop->timetoregen <= 0
+					&& (prop->obj->type == OBJTYPE_GLASS || prop->obj->type == OBJTYPE_TINTEDGLASS)
+					&& (prop->obj->hidden & OBJHFLAG_DELETING) && (prop->obj->hidden2 & OBJH2FLAG_CANREGEN)) {
+				objFree(prop->obj, false, true);
+				propExecuteTickOperation(prop, TICKOP_FREE);
+			}
+		}
 	}
 
 	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
@@ -358,6 +439,8 @@ static void netjoinSlotWrite(struct netbuf *dst, s32 svplayernum, const struct n
 	netbufWriteU8(dst, cl ? cl->id : NET_NULL_CLIENT);
 	if (cl) {
 		netbufWriteStr(dst, cl->settings.name);
+		netbufWriteU8(dst, g_PlayerConfigsArray[svplayernum].base.mpbodynum);
+		netbufWriteU8(dst, g_PlayerConfigsArray[svplayernum].base.mpheadnum);
 	}
 }
 
@@ -366,6 +449,8 @@ u32 netjoinSlotRead(struct netbuf *src, struct netclient *srccl)
 	const u8 sv = netbufReadU8(src);
 	const u8 clid = netbufReadU8(src);
 	const char *name = (clid != NET_NULL_CLIENT) ? netbufReadStr(src) : NULL;
+	const u8 body = (clid != NET_NULL_CLIENT) ? netbufReadU8(src) : 0;
+	const u8 head = (clid != NET_NULL_CLIENT) ? netbufReadU8(src) : 0;
 
 	if (src->error || srccl->state < CLSTATE_GAME || sv >= MAX_PLAYERS) {
 		return src->error;
@@ -418,6 +503,7 @@ u32 netjoinSlotRead(struct netbuf *src, struct netclient *srccl)
 	cl->player->isremote = true;
 	g_Vacant[p] = 0;
 	g_Hold[p] = 0;
+	netjoinSetBody(p, body, head);
 
 	sysLogPrintf(LOG_NOTE, "NET: %s (client %u) takes player slot %d", cl->settings.name, clid, p);
 
@@ -491,9 +577,15 @@ static s32 netjoinInitialPropGone(s32 i)
 	if (prop->syncid != (u32)(i + 1)) {
 		return 0;
 	}
-	if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)
-			&& (prop->obj->hidden & OBJHFLAG_GONE)) {
-		return (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0;
+	if (!prop->parent && prop->obj && (prop->type == PROPTYPE_OBJ || prop->type == PROPTYPE_WEAPON)) {
+		if (prop->obj->hidden & OBJHFLAG_GONE) {
+			return (prop->obj->hidden2 & OBJH2FLAG_CANREGEN) ? 1 : 0;
+		}
+		if (prop->obj->hidden & OBJHFLAG_DELETING) {
+			// broken glass and the like: it only leaves the prop list when it next ticks,
+			// and things out of the host's sight don't tick
+			return 0;
+		}
 	}
 	return -1;
 }
@@ -636,6 +728,8 @@ static void netjoinServerJoin(struct netclient *cl, s32 p)
 	snprintf(cfg->base.name, sizeof(cfg->base.name), "%s\n", cl->settings.name);
 	// a fresh score for the slot
 	func0f187838(&cfg->base);
+	// and the joiner's own character (before the stage start below, which tells the joiner)
+	netjoinSetBody(p, cl->settings.bodynum, cl->settings.headnum);
 
 	pl->client = cl;
 	pl->isremote = true;

@@ -17,6 +17,9 @@
 //   --net-rounds N           (host) auto-start up to N matches in a row (each needs --net-autoabort or a
 //                            normal ending, then a way back to the lobby); default 1
 //   --net-autokill SECS      (host) every SECS seconds, shoot the chr nearest to one of the players
+//   --net-body N             local player's Combat Sim character (MPBODY_* number), with its usual head
+//   --net-breakglass SECS    (host) break every pane of glass in the stage at SECS; every copy given this
+//                            flag logs how many panes are whole, to compare
 //   --net-autoalarm SECS     (host) alarm and a 60 s countdown on at SECS, both off at 2*SECS
 //   --net-cheats MASK        (host) turn on these cheats (bit = CHEAT_* number; 64-bit, e.g. 0x4 invincible)
 //   --net-autopilot [SEED]   drive the local player with scripted input
@@ -93,6 +96,8 @@ static s32 g_NetAutoKillSecs = 0;
 static s32 g_NetAutoHudTest = 0;
 static s32 g_NetAutoTeams = 0;
 static s32 g_NetAutoAlarmSecs = 0;
+static s32 g_NetAutoBody = -1;
+static s32 g_NetAutoBreakGlassSecs = 0;
 static u64 g_NetAutoCheats = 0;
 static const char *g_NetAutoName = NULL;
 
@@ -136,6 +141,8 @@ void netAutoInit(void)
 	}
 	g_NetLagBias = (f32)sysArgGetInt("--net-lagbias", 0);
 	g_NetAutoAlarmSecs = sysArgGetInt("--net-autoalarm", 0);
+	g_NetAutoBody = sysArgGetInt("--net-body", -1);
+	g_NetAutoBreakGlassSecs = sysArgGetInt("--net-breakglass", 0);
 	const char *cheats = sysArgGetString("--net-cheats");
 	g_NetAutoCheats = (cheats && cheats[0]) ? strtoull(cheats, NULL, 0) : 0;
 
@@ -177,6 +184,10 @@ void netAutoApplyName(void)
 {
 	if (g_NetAutoName && g_NetAutoName[0]) {
 		snprintf(g_PlayerConfigsArray[0].base.name, sizeof(g_PlayerConfigsArray[0].base.name), "%s\n", g_NetAutoName);
+	}
+	if (g_NetAutoBody >= 0 && g_NetAutoBody < ARRAYCOUNT(g_MpBodies)) {
+		g_PlayerConfigsArray[0].base.mpbodynum = g_NetAutoBody;
+		g_PlayerConfigsArray[0].base.mpheadnum = mpGetMpheadnumByMpbodynum(g_NetAutoBody);
 	}
 }
 
@@ -599,6 +610,46 @@ static void netAutoTickAlarm(void)
 	}
 }
 
+/* breakglass: is broken glass the same everywhere, also for a late joiner */
+
+static void netAutoTickGlass(void)
+{
+	static s32 broke = 0;
+	static s32 prevwhole = -1;
+
+	if (g_NetAutoBreakGlassSecs <= 0 || !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_GAME
+			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 60) {
+		return;
+	}
+
+	const bool breaknow = g_NetMode == NETMODE_SERVER && !broke && g_NetAutoGameTicks >= (u32)g_NetAutoBreakGlassSecs * 60;
+	s32 whole = 0;
+
+	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		struct prop *prop = &g_Vars.props[i];
+		if (prop->type != PROPTYPE_OBJ || !prop->obj || !prop->syncid
+				|| (prop->obj->type != OBJTYPE_GLASS && prop->obj->type != OBJTYPE_TINTEDGLASS)
+				|| (prop->obj->hidden & (OBJHFLAG_DELETING | OBJHFLAG_GONE))) {
+			continue;
+		}
+		if (breaknow) {
+			objDamage(prop->obj, 1000.f, &prop->pos, WEAPON_FALCON2, 0);
+		}
+		if (!(prop->obj->hidden & OBJHFLAG_DELETING)) {
+			++whole;
+		}
+	}
+
+	if (breaknow) {
+		broke = 1;
+	}
+
+	if (whole != prevwhole) {
+		prevwhole = whole;
+		sysLogPrintf(LOG_NOTE, "NET: glass: %d pane(s) whole", whole);
+	}
+}
+
 // --net-altfire: keep the local player's gun on its secondary function.
 // --net-weapon: log when anyone's cloak goes up or down, to compare between copies.
 static void netAutoTickWeaponTest(void)
@@ -642,6 +693,7 @@ void netAutoTick(void)
 	netAutoTickDump();
 	netAutoTickKill();
 	netAutoTickAlarm();
+	netAutoTickGlass();
 	netAutoTickQuit();
 
 	// --net-hudtest: say something and (client) mark ready a few seconds after getting into the
