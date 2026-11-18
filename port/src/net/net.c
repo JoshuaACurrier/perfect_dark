@@ -14,6 +14,7 @@
 #include "net/nethud.h"
 #include "net/netjoin.h"
 #include "net/netscen.h"
+#include "net/netrocket.h"
 #include "net/netcoop.h"
 #include "types.h"
 #include "constants.h"
@@ -798,6 +799,7 @@ static void netServerEvReceive(struct netclient *cl)
 			case CLC_SETTINGS: rc = netmsgClcSettingsRead(&cl->in, cl); break;
 			case CLC_READY: rc = nethudReadyRead(&cl->in, cl); break;
 			case CLC_PROPREQ: rc = netjoinPropReqRead(&cl->in, cl); break;
+			case CLC_ROCKET: rc = netrocketClcRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -912,6 +914,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_SLOT: rc = netjoinSlotRead(&cl->in, cl); break;
 			case SVC_RESYNC: rc = netjoinResyncRead(&cl->in, cl); break;
 			case SVC_SCENARIO: rc = netscenRead(&cl->in, cl); break;
+			case SVC_ROCKET: rc = netrocketSvcRead(&cl->in, cl); break;
 			default:
 				rc = 1;
 				break;
@@ -1094,6 +1097,7 @@ void netEndFrame(void)
 					g_NetLocalClient->sentmove = g_NetLocalClient->outmove[0];
 				}
 			}
+			netrocketTick(false);
 			if (g_NetNextUpdate <= g_NetTick) {
 				g_NetNextUpdate = g_NetTick + g_NetClientUpdateRate;
 			}
@@ -1109,6 +1113,7 @@ void netEndFrame(void)
 					}
 				}
 			}
+			netrocketTick(g_NetNextUpdate <= g_NetTick);
 			if (g_NetNextUpdate <= g_NetTick) {
 				// chr snapshots go out at the same rate as player updates
 				netchrServerSend();
@@ -1287,6 +1292,7 @@ void netSyncIdsAllocate(void)
 	// don't allocate anything else if we're in lobby
 	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {
 		netjoinOnStageLoaded();
+	netrocketReset();
 		return;
 	}
 
@@ -1332,6 +1338,7 @@ void netSyncIdsAllocate(void)
 	sysLogPrintf(LOG_NOTE, "NET: last initial syncid: %u", g_NetNextSyncId);
 
 	netjoinOnStageLoaded();
+	netrocketReset();
 }
 
 void netChatPrintf(struct netclient *dst, const char *fmt, ...)

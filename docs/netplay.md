@@ -158,6 +158,14 @@ network tool would show. Loss is the share of the host's snapshots that never re
   client removes what it shouldn't have, asks the host for loose guns it is missing, and opens or
   closes a door that was different two lists in a row. A repair is written to `pd.log` as
   `NET: resync repaired: ...`, so the log shows whether a game drifted apart.
+* **The Slayer's guided rocket works for everyone.** The pilot's own machine steers the rocket, so
+  it responds at once, and decides when it hits something; it tells the host where the rocket is
+  every frame (`CLC_ROCKET`), and the host tells everyone else (`SVC_ROCKET`), its own guided
+  rockets included. Copies on other machines only follow: they do not collide with anything and
+  go off when the host says the rocket is gone. The blast and its damage are the host's, at the
+  place the pilot reported. Before this the host had no controls for a remote pilot: the rocket
+  flew straight while its pilot stood frozen, and nobody saw the host's own rocket turn.
+  `pd.log` has `NET: rocket ...` lines with the end position on every machine.
 * **Scenarios follow the host.** In King of the Hill, Pop a Cap, Hold the Briefcase, Hacker Central
   and Capture the Case the host decides and tells everyone (`SVC_SCENARIO`, when something changes,
   every 10 seconds anyway, and to a late joiner): where the hill is, who holds it and when it
@@ -191,7 +199,6 @@ network tool would show. Loss is the share of the host's snapshots that never re
 
 ### Known issues
 
-* Clients can't use Slayer fly-by-wire rockets and they will not correctly sync if the server uses them.
 * Clients can't use the alt fire mode on the FarSight and probably a couple other guns (not
   reproduced or fixed yet).
 * Cloaking (the device and the RCP-120's) is decided by the cloaked player's own game and shown the

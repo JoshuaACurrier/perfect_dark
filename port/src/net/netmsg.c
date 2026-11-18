@@ -17,6 +17,7 @@
 #include "net/netlag.h"
 #include "net/nethud.h"
 #include "net/netjoin.h"
+#include "net/netrocket.h"
 #include "game/prop.h"
 #include "game/propobj.h"
 #include "game/player.h"
@@ -1564,7 +1565,11 @@ u32 netmsgSvcPropDamageRead(struct netbuf *src, struct netclient *srccl)
 	}
 	if (prop && prop->obj && prop->type != PROPTYPE_PLAYER && prop->type != PROPTYPE_CHR && !src->error) {
 		prop->obj->damage = damagepre;
-		prop->obj->hidden = hidden | (prop->obj->hidden & (OBJHFLAG_PROJECTILE | OBJHFLAG_EMBEDDED));
+		// Whether it is flying, stuck in something or on its way out is this machine's own
+		// business. (A rocket caught in a blast on the host arrived here marked as being
+		// deleted, and vanished without going off; the host's removal message follows anyway.)
+		const u32 ours = OBJHFLAG_PROJECTILE | OBJHFLAG_EMBEDDED | OBJHFLAG_DELETING;
+		prop->obj->hidden = (hidden & ~ours) | (prop->obj->hidden & ours);
 		objDamage(prop->obj, -damage, &pos, weaponnum, playernum);
 	}
 	return src->error;
@@ -2191,6 +2196,9 @@ s32 netmsgPropRemoveApply(u32 syncid, s32 regen)
 				break;
 			}
 			applied = true;
+			if (netrocketOnRemove(prop)) {
+				break;
+			}
 			if (regen && (obj->hidden2 & OBJH2FLAG_CANREGEN)) {
 				// same as a pickup on the host: hide it and start the regen wait
 				objFree(obj, false, true);

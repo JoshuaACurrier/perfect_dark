@@ -3597,7 +3597,7 @@ void playerTick(bool arg0)
 				s8 stickx = 0;
 				s8 sticky = 0;
 #ifndef PLATFORM_N64
-				s8 rsticky = joyGetRStickY(contpad1);
+				s8 rsticky = (g_NetMode && g_Vars.currentplayer->isremote) ? 0 : joyGetRStickY(contpad1);
 #endif
 				Mtxf sp1fc;
 				Mtxf sp1bc;

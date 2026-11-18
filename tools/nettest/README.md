@@ -26,6 +26,7 @@ script their input, and compare what each copy thinks the world looks like.
 | `--net-stage NUM` | Host: stage for the auto-started match (e.g. `0x1f` Complex). |
 | `--net-sims N`, `--net-simdiff D` | Host: number of Simulants and their difficulty (0 meat .. 5 dark). |
 | `--net-scenario N` | Host: scenario (0 combat, 1 hold the briefcase, 2 hacker central, 3 pop a cap, 4 king of the hill, 5 capture the case). Compare the `NET: scenario:` lines of each copy's log. |
+| `--net-weapon 0x18 --net-altfire` | (existing flags) Everyone spawns with a Slayer on its guided function; with `--net-autopilot` the scripted players fire, steer and detonate rockets. Compare the `NET: rocket N ... at X Y Z` lines: the pilot, the host and the watching copies should end within a unit or two. |
 | `--net-body N` | The local player's Combat Sim character (`MPBODY_*` number). Every copy logs `NET: bodies (client=body/head): ...` when it changes; the lines should match. |
 | `--net-breakglass SECS` | Host: break every pane of glass at SECS (Grid `0x47` has 19, Area 52 `0x3b` and Felicity `0x43` have 8). Every copy given the flag logs `NET: glass: N pane(s) whole`. |
 | `--net-hilltime SECS` | Host: King of the Hill hold time on top of the game's 10 seconds (0 makes the hill score and move often). |

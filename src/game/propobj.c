@@ -80,6 +80,7 @@
 #ifndef PLATFORM_N64
 #include "net/net.h"
 #include "net/netmsg.h"
+#include "net/netrocket.h"
 #include "system.h"
 #endif
 
@@ -4426,7 +4427,11 @@ void weaponTick(struct prop *prop)
 			|| weapon->weaponnum == WEAPON_HOMINGROCKET
 			|| weapon->weaponnum == WEAPON_SKROCKET) {
 		// Handle rockets
+#ifndef PLATFORM_N64
+		if (weapon->timer240 == 0 && !netrocketHoldDetonation(weapon)) {
+#else
 		if (weapon->timer240 == 0) {
+#endif
 			propExplode(prop, (obj->flags2 & OBJFLAG2_WEAPON_HUGEEXP) ? EXPLOSIONTYPE_HUGE17 : EXPLOSIONTYPE_ROCKET);
 
 			obj->hidden |= OBJHFLAG_DELETING;
@@ -11292,7 +11297,12 @@ s32 objTickPlayer(struct prop *prop)
 	}
 
 	if (fulltick) {
+#ifndef PLATFORM_N64
+		// (a guided rocket someone else is flying only goes where we are told it went)
+		if (model->anim == NULL && (obj->hidden & OBJHFLAG_PROJECTILE) && !netrocketPuppetTick(obj)) {
+#else
 		if (model->anim == NULL && (obj->hidden & OBJHFLAG_PROJECTILE)) {
+#endif
 			sp592 = projectileTick(obj, &embedded);
 
 			if (embedded) {
