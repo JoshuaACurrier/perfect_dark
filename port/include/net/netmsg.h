@@ -22,6 +22,7 @@
 #define SVC_PROP_DOOR     0x35 // door state changed
 #define SVC_PROP_LIFT     0x36 // lift state changed
 #define SVC_PROP_REMOVE   0x37 // object in the world was freed (mission games)
+#define SVC_PROP_STATE    0x38 // what a script changed about an object: shown, locked, destroyed... (netcoop.c)
 #define SVC_CHR_MOVE      0x40 // chr snapshots (position, animation, aim)
 #define SVC_CHR_SHOT      0x41 // chr fired a shot
 #define SVC_CHR_DAMAGE    0x42 // chr was damaged
@@ -98,10 +99,11 @@ u32 netmsgSvcChrDropRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnChrRemove(struct prop *chrprop);
 u32 netmsgSvcChrRemoveRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags);
+u32 netmsgSvcChrSpawnWrite(struct netbuf *dst, struct prop *prop);
 u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl);
 void netmsgOnPropFree(struct prop *prop);
 void netmsgOnPropTickFree(struct prop *prop);
-s32 netmsgPropRemoveApply(u32 syncid, s32 regen);
+s32 netmsgPropRemoveApply(u32 syncid, s32 regen, s32 timeleft);
 u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrMoveRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcChrShotWrite(struct netbuf *dst, struct chrdata *chr, s32 handnum, bool beam, struct coord *from, struct coord *to, bool hitbg, bool paint);

@@ -21,6 +21,7 @@
 #include "net/netmsg.h"
 #include "net/netjoin.h"
 #include "net/netscen.h"
+#include "net/netcoop.h"
 
 extern s32 g_StageTimeElapsed60;
 extern f32 g_StageTimeElapsed1f;
@@ -46,6 +47,7 @@ static s32 g_MySvNum = 0;
 static u64 g_StartSeeds[2];
 static u8 *g_InitProps = NULL;         // 1 = this prop index held a prop at the start
 static struct coord *g_InitPos = NULL; // and where it was
+static u16 *g_InitParent = NULL;       // and the id of whoever held it (0: nobody)
 static s32 g_InitNum = 0;
 static u32 g_NextJoinTick = 0;
 
@@ -132,8 +134,10 @@ void netjoinReset(void)
 
 	free(g_InitProps);
 	free(g_InitPos);
+	free(g_InitParent);
 	g_InitProps = NULL;
 	g_InitPos = NULL;
+	g_InitParent = NULL;
 	g_InitNum = 0;
 
 	// (g_NetTick starts over with every connection)
@@ -242,7 +246,7 @@ void netjoinOnPlayersAllocated(void)
 	memset(g_Hold, 0, sizeof(g_Hold));
 	memset(g_Rebody, 0, sizeof(g_Rebody));
 
-	if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+	if (g_Vars.antiplayernum >= 0) {
 		return;
 	}
 
@@ -256,7 +260,9 @@ void netjoinOnPlayersAllocated(void)
 
 	s32 num = 0;
 	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
-		if ((g_MpSetup.chrslots & (1 << p)) && !(owned & (1 << p))) {
+		// (a mission's player slots are only written to chrslots after this)
+		const bool inmatch = (g_Vars.coopplayernum >= 0) ? (g_Vars.players[p] != NULL) : ((g_MpSetup.chrslots & (1 << p)) != 0);
+		if (inmatch && !(owned & (1 << p))) {
 			if (g_NetMode == NETMODE_CLIENT) {
 				// the same body on every machine
 				for (s32 sv = 0; sv < MAX_PLAYERS; ++sv) {
@@ -281,8 +287,10 @@ void netjoinOnStageLoaded(void)
 {
 	free(g_InitProps);
 	free(g_InitPos);
+	free(g_InitParent);
 	g_InitProps = NULL;
 	g_InitPos = NULL;
+	g_InitParent = NULL;
 	g_InitNum = 0;
 	g_NextJoinTick = 0;
 	netjoinResyncReset();
@@ -297,7 +305,8 @@ void netjoinOnStageLoaded(void)
 		g_InitNum = g_Vars.maxprops;
 		g_InitProps = calloc(g_InitNum, 1);
 		g_InitPos = calloc(g_InitNum, sizeof(*g_InitPos));
-		if (!g_InitProps || !g_InitPos) {
+		g_InitParent = calloc(g_InitNum, sizeof(*g_InitParent));
+		if (!g_InitProps || !g_InitPos || !g_InitParent) {
 			g_InitNum = 0;
 			return;
 		}
@@ -305,6 +314,9 @@ void netjoinOnStageLoaded(void)
 			if (g_Vars.props[i].syncid == (u32)(i + 1)) {
 				g_InitProps[i] = 1;
 				g_InitPos[i] = g_Vars.props[i].pos;
+				if (g_Vars.props[i].parent) {
+					g_InitParent[i] = g_Vars.props[i].parent->syncid;
+				}
 			}
 		}
 	} else if (g_Loading == LOAD_WAITING) {
@@ -396,7 +408,8 @@ static void netjoinLogBodies(void)
 
 void netjoinTick(void)
 {
-	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME || !g_Vars.normmplayerisrunning) {
+	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME
+			|| !(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0) || g_Vars.antiplayernum >= 0) {
 		return;
 	}
 
@@ -412,7 +425,7 @@ void netjoinTick(void)
 		// Broken glass comes back 20 seconds after it is cleared away, and it is only cleared
 		// away when it next ticks, which a pane nobody on this machine is near never does. So
 		// machines disagreed about which panes were back. Clear it away at once everywhere.
-		for (s32 i = 0; i < g_Vars.maxprops; ++i) {
+		for (s32 i = 0; i < g_Vars.maxprops && g_Vars.normmplayerisrunning; ++i) {
 			struct prop *prop = &g_Vars.props[i];
 			if (prop->type == PROPTYPE_OBJ && prop->obj && !prop->parent && prop->timetoregen <= 0
 					&& (prop->obj->type == OBJTYPE_GLASS || prop->obj->type == OBJTYPE_TINTEDGLASS)
@@ -532,7 +545,7 @@ void netjoinServerOnLeave(struct netclient *cl)
 		return;
 	}
 
-	if (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) {
+	if (g_Vars.antiplayernum >= 0 || !g_NetServerJoinInProgress) {
 		if (cl->config) {
 			cl->config->client = NULL;
 		}
@@ -601,13 +614,29 @@ static void netjoinFlush(struct netclient *cl, struct netbuf *buf, u32 *total)
 // the state of the world for someone who has just loaded the stage as it was at the start
 static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u32 *total)
 {
-	s32 numremoved = 0, numregen = 0, numspawned = 0, nummoved = 0, numdoors = 0;
+	s32 numremoved = 0, numregen = 0, numspawned = 0, nummoved = 0, numdoors = 0, numdropped = 0, numguards = 0;
 
 	// everyone else's health, weapon and whether they're alive
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		struct netclient *cl = &g_NetClients[i];
 		if (cl != joiner && cl->state >= CLSTATE_GAME && cl->player) {
 			netmsgSvcPlayerStatsWrite(buf, cl);
+		}
+	}
+
+	// things a guard held at the start and has let go of (before the lists below say where
+	// they are now, or that they are gone)
+	for (s32 i = 0; i < g_InitNum && i < g_Vars.maxprops; ++i) {
+		const struct prop *prop = &g_Vars.props[i];
+		if (g_InitProps[i] && g_InitParent[i] && (prop->syncid != (u32)(i + 1) || !prop->parent)) {
+			netbufWriteU8(buf, SVC_CHR_DROP);
+			netbufWriteU32(buf, g_InitParent[i]);
+			netbufWriteU32(buf, i + 1);
+			netbufWriteU8(buf, DROPTYPE_DEFAULT);
+			++numdropped;
+			if (buf->wp > sizeof(g_JoinBuf) - 2048) {
+				netjoinFlush(joiner, buf, total);
+			}
 		}
 	}
 
@@ -618,9 +647,14 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		}
 		const s32 regen = netjoinInitialPropGone(i);
 		if (regen >= 0) {
+			// (with how long until it comes back, so it does at the same moment as on the host)
+			const s16 timeleft = (regen == 1) ? g_Vars.props[i].timetoregen : 0;
 			netbufWriteU8(buf, SVC_PROP_REMOVE);
 			netbufWriteU32(buf, i + 1);
-			netbufWriteU8(buf, regen);
+			netbufWriteU8(buf, regen | (timeleft > 0 ? 2 : 0));
+			if (timeleft > 0) {
+				netbufWriteS16(buf, timeleft);
+			}
 			if (g_Vars.props[i].syncid != (u32)(i + 1)) {
 				++numremoved;
 			} else {
@@ -640,6 +674,15 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		}
 
 		const bool initial = (prop->syncid == (u32)(i + 1)) && i < g_InitNum && g_InitProps[i];
+
+		if (prop->type == PROPTYPE_CHR) {
+			// guards that a mission script has spawned since
+			if (!initial && prop->chr && !prop->chr->aibot && !(prop->chr->hidden & CHRHFLAG_DELETING)) {
+				netmsgSvcChrSpawnWrite(buf, prop);
+				++numguards;
+			}
+			continue;
+		}
 
 		if (prop->type == PROPTYPE_DOOR) {
 			const struct doorobj *door = prop->door;
@@ -682,13 +725,19 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		}
 	}
 
-	// the hill, the victim, who is carrying the briefcase (after the props it refers to)
-	netscenWrite(buf);
-	netmsgSvcMpScoresWrite(buf);
+	if (g_Vars.normmplayerisrunning) {
+		// the hill, the victim, who is carrying the briefcase (after the props it refers to)
+		netscenWrite(buf);
+		netmsgSvcMpScoresWrite(buf);
+	} else {
+		// objectives, alarm and timer, and what scripts have changed about objects: all of
+		// it goes out again with the next updates
+		netcoopOnJoin();
+	}
 	netjoinFlush(joiner, buf, total);
 
-	sysLogPrintf(LOG_NOTE, "NET: snapshot for client %u: %d removed, %d waiting to regen, %d spawned, %d moved, %d doors open, %u bytes",
-		joiner->id, numremoved, numregen, numspawned, nummoved, numdoors, *total);
+	sysLogPrintf(LOG_NOTE, "NET: snapshot for client %u: %d removed, %d waiting to regen, %d spawned, %d moved, %d doors open, %d let go, %d new guards, %u bytes",
+		joiner->id, numremoved, numregen, numspawned, nummoved, numdoors, numdropped, numguards, *total);
 }
 
 static s32 netjoinFindSlot(void)
@@ -727,7 +776,9 @@ static void netjoinServerJoin(struct netclient *cl, s32 p)
 	cfg->controlmode = CONTROLMODE_NA;
 	snprintf(cfg->base.name, sizeof(cfg->base.name), "%s\n", cl->settings.name);
 	// a fresh score for the slot
-	func0f187838(&cfg->base);
+	if (g_Vars.normmplayerisrunning) {
+		func0f187838(&cfg->base);
+	}
 	// and the joiner's own character (before the stage start below, which tells the joiner)
 	netjoinSetBody(p, cl->settings.bodynum, cl->settings.headnum);
 
@@ -763,7 +814,7 @@ void netjoinServerTick(void)
 
 	netjoinServerResync();
 
-	if (!g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0
+	if (!(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0) || g_Vars.antiplayernum >= 0
 			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 60 || g_NetTick < g_NextJoinTick) {
 		return;
 	}
@@ -998,7 +1049,7 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 	for (s32 i = 0; i < numgone && !src->error; ++i) {
 		const u16 syncid = netbufReadU16(src);
 		const u8 regen = netbufReadU8(src);
-		if (apply && !src->error && netmsgPropRemoveApply(syncid, regen)) {
+		if (apply && !src->error && netmsgPropRemoveApply(syncid, regen, 0)) {
 			++fixedgone;
 		}
 	}
@@ -1023,7 +1074,7 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 				found = ((dyn[j] & ~RESYNC_IN_FLIGHT) == prop->syncid);
 			}
 			if (!found) {
-				netmsgPropRemoveApply(prop->syncid, 0);
+				netmsgPropRemoveApply(prop->syncid, 0, 0);
 				++fixedstale;
 			}
 		}
@@ -1101,7 +1152,7 @@ u32 netjoinResyncRead(struct netbuf *src, struct netclient *srccl)
 		for (s32 i = 0; i < g_Vars.maxprops; ++i) {
 			if (netjoinIsLooseGun(&g_Vars.props[i]) && !(g_Vars.props[i].obj->hidden & OBJHFLAG_PROJECTILE)) {
 				sysLogPrintf(LOG_NOTE, "NET: desynctest: deleting loose gun %u here", g_Vars.props[i].syncid);
-				netmsgPropRemoveApply(g_Vars.props[i].syncid, 0);
+				netmsgPropRemoveApply(g_Vars.props[i].syncid, 0, 0);
 				break;
 			}
 		}

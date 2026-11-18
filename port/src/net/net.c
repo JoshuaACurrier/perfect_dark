@@ -904,6 +904,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_CHR_MOVE: rc = netmsgSvcChrMoveRead(&cl->in, cl); break;
 			case SVC_CHR_SHOT: rc = netmsgSvcChrShotRead(&cl->in, cl); break;
 			case SVC_OBJECTIVES: rc = netmsgSvcObjectivesRead(&cl->in, cl); break;
+			case SVC_PROP_STATE: rc = netmsgSvcPropStateRead(&cl->in, cl); break;
 			case SVC_HUDMSG: rc = netmsgSvcHudmsgRead(&cl->in, cl); break;
 			case SVC_MISSIONSTATE: rc = netmsgSvcMissionStateRead(&cl->in, cl); break;
 			case SVC_MUSIC: rc = netmsgSvcMusicRead(&cl->in, cl); break;
@@ -1292,7 +1293,8 @@ void netSyncIdsAllocate(void)
 	// don't allocate anything else if we're in lobby
 	if (g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING) {
 		netjoinOnStageLoaded();
-	netrocketReset();
+		netcoopOnStageLoaded();
+		netrocketReset();
 		return;
 	}
 
@@ -1338,6 +1340,7 @@ void netSyncIdsAllocate(void)
 	sysLogPrintf(LOG_NOTE, "NET: last initial syncid: %u", g_NetNextSyncId);
 
 	netjoinOnStageLoaded();
+	netcoopOnStageLoaded();
 	netrocketReset();
 }
 

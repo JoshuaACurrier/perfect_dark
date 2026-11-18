@@ -306,7 +306,7 @@ u32 netmsgClcAuthRead(struct netbuf *src, struct netclient *srccl)
 	sysLogPrintf(LOG_NOTE, "NET: %s (%u) joined", srccl->settings.name, srccl->id);
 
 	if (g_NetLocalClient->state >= CLSTATE_GAME) {
-		if (g_NetServerJoinInProgress && g_Vars.normmplayerisrunning && g_Vars.coopplayernum < 0 && g_Vars.antiplayernum < 0) {
+		if (g_NetServerJoinInProgress && (g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0) && g_Vars.antiplayernum < 0) {
 			// gets a spare player slot if there is one (netjoin.c)
 			netChatPrintf(NULL, "%s connected", name);
 			netjoinServerRequest(srccl);
@@ -2070,15 +2070,33 @@ void netmsgOnChrSpawn(struct prop *prop, u32 spawnflags)
 
 	struct chrdata *chr = prop->chr;
 	sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: chr %d spawned mid-stage, syncid %u", chr->chrnum, prop->syncid);
-	netbufWriteU8(&g_NetMsgRel, SVC_CHR_SPAWN);
-	netbufWriteU32(&g_NetMsgRel, prop->syncid);
-	netbufWriteS16(&g_NetMsgRel, chr->bodynum);
-	netbufWriteS16(&g_NetMsgRel, chr->headnum);
-	netbufWriteS16(&g_NetMsgRel, chr->chrnum);
-	netbufWriteU32(&g_NetMsgRel, spawnflags);
-	netbufWriteCoord(&g_NetMsgRel, &prop->pos);
-	netbufWriteRooms(&g_NetMsgRel, prop->rooms, ARRAYCOUNT(prop->rooms));
-	netbufWriteF32(&g_NetMsgRel, chrGetInverseTheta(chr));
+	netchrSetSpawnFlags(chr, spawnflags);
+	netmsgSvcChrSpawnWrite(&g_NetMsgRel, prop);
+}
+
+// (also for someone who joins later: the guard as it is now)
+u32 netmsgSvcChrSpawnWrite(struct netbuf *dst, struct prop *prop)
+{
+	struct chrdata *chr = prop->chr;
+	RoomNum rooms[8];
+	s32 n = 0;
+	// (the list has garbage after its end mark)
+	for (; n < ARRAYCOUNT(rooms) - 1 && prop->rooms[n] >= 0; ++n) {
+		rooms[n] = prop->rooms[n];
+	}
+	for (; n < ARRAYCOUNT(rooms); ++n) {
+		rooms[n] = -1;
+	}
+	netbufWriteU8(dst, SVC_CHR_SPAWN);
+	netbufWriteU32(dst, prop->syncid);
+	netbufWriteS16(dst, chr->bodynum);
+	netbufWriteS16(dst, chr->headnum);
+	netbufWriteS16(dst, chr->chrnum);
+	netbufWriteU32(dst, netchrGetSpawnFlags(chr));
+	netbufWriteCoord(dst, &prop->pos);
+	netbufWriteRooms(dst, rooms, ARRAYCOUNT(rooms));
+	netbufWriteF32(dst, chrGetInverseTheta(chr));
+	return dst->error;
 }
 
 u32 netmsgSvcChrSpawnRead(struct netbuf *src, struct netclient *srccl)
@@ -2182,7 +2200,7 @@ void netmsgOnPropTickFree(struct prop *prop)
 }
 
 // returns true if the thing was still here
-s32 netmsgPropRemoveApply(u32 syncid, s32 regen)
+s32 netmsgPropRemoveApply(u32 syncid, s32 regen, s32 timeleft)
 {
 	s32 applied = false;
 
@@ -2190,6 +2208,18 @@ s32 netmsgPropRemoveApply(u32 syncid, s32 regen)
 	for (s32 i = 0; i < g_Vars.maxprops; ++i) {
 		struct prop *prop = &g_Vars.props[i];
 		if (prop->syncid == syncid) {
+			if (prop->type == PROPTYPE_CHR) {
+				// a guard the host no longer has (a joiner's snapshot or the resync says so)
+				if (netmsgIsSyncedGuard(prop) && !(prop->chr->hidden & CHRHFLAG_DELETING)) {
+					netchrAllowRemove(prop->chr);
+					prop->chr->hidden |= CHRHFLAG_DELETING;
+					applied = true;
+				}
+				break;
+			}
+			if (prop->type != PROPTYPE_OBJ && prop->type != PROPTYPE_WEAPON && prop->type != PROPTYPE_DOOR) {
+				break;
+			}
 			struct defaultobj *obj = prop->obj;
 			if (!obj || prop->parent || (obj->hidden & (OBJHFLAG_GONE | OBJHFLAG_DELETING))) {
 				// already taken or on its way out here
@@ -2203,6 +2233,10 @@ s32 netmsgPropRemoveApply(u32 syncid, s32 regen)
 				// same as a pickup on the host: hide it and start the regen wait
 				objFree(obj, false, true);
 				propExecuteTickOperation(prop, TICKOP_FREE);
+				if (timeleft > 0 && prop->timetoregen > 0) {
+					// taken a while ago (we have only just joined)
+					prop->timetoregen = timeleft;
+				}
 			} else if (g_Vars.normmplayerisrunning) {
 				// free it now; OBJHFLAG_DELETING only takes effect when the obj ticks, and
 				// guns lying out of everyone's sight don't
@@ -2221,12 +2255,13 @@ u32 netmsgSvcPropRemoveRead(struct netbuf *src, struct netclient *srccl)
 {
 	const u32 syncid = netbufReadU32(src);
 	const u8 regen = netbufReadU8(src);
+	const s16 timeleft = (regen & 2) ? netbufReadS16(src) : 0;
 
 	if (src->error || srccl->state < CLSTATE_GAME) {
 		return src->error;
 	}
 
-	netmsgPropRemoveApply(syncid, regen);
+	netmsgPropRemoveApply(syncid, regen & 1, timeleft);
 
 	return src->error;
 }

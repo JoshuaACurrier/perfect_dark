@@ -35,6 +35,7 @@
 #include "types.h"
 #ifndef PLATFORM_N64
 #include "net/net.h"
+#include "net/netjoin.h"
 #include "system.h"
 #endif
 
@@ -753,6 +754,10 @@ MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *i
 			if (numplayers > 2) {
 				// TODO: more than one co-op buddy
 				sysLogPrintf(LOG_WARNING, "NET: co-op supports 2 players for now, %d are connected", numplayers);
+				numplayers = 2;
+			}
+			if (numplayers < 2 && netjoinSpareSlots() > 0) {
+				// alone for now: the buddy's slot stays empty until someone joins (netjoin.c)
 				numplayers = 2;
 			}
 			g_Vars.numaibuddies = 0;

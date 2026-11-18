@@ -28,6 +28,10 @@ s32 netchrClientMayRemove(struct chrdata *chr);
 // client: a chr was spawned by the server mid-stage (its slot may have been used before)
 void netchrOnClientSpawn(struct chrdata *chr);
 
+// server: the flags a script spawned this guard with
+void netchrSetSpawnFlags(struct chrdata *chr, u32 spawnflags);
+u32 netchrGetSpawnFlags(struct chrdata *chr);
+
 // client: makes the chr follow the server's snapshots instead of running AI
 void netchrPuppetTick(struct chrdata *chr);
 

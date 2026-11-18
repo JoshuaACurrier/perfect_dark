@@ -27,7 +27,7 @@ Expect nothing to work right.
 
 ### Joining and leaving a match that is running
 
-You can join a Combat Simulator match that has already started. The number of players in a match is
+You can join a Combat Simulator match or a co-op mission that has already started. The number of players in a match is
 fixed when its stage loads, so the host starts every match with a few spare player slots that nobody
 controls (`Net.Server.SpareSlots`, default 2, up to 8 players in all; an empty slot's player is kept
 dead and hidden on every machine and isn't on the scoreboard). When you connect during a match and a
@@ -40,9 +40,10 @@ person coming back, gets it. Their score starts from zero.
 
 Limits for now:
 
-* Combat Simulator only. In a co-op mission, or when no slot is free, you wait in the lobby (`Match in
-  progress`, chat still works) and play from the next match.
-* A late joiner looks like the slot's default character to the others until the next match.
+* When no slot is free you wait in the lobby (`Match in progress`, chat still works) and play from
+  the next match.
+* Something that had been picked up when you joined comes back at the same moment for you as for
+  everyone else (it used to start a fresh 20 second wait on the joiner's machine).
 * A late joiner plays as their own character: the spare slot they take over is rebuilt with their
   body and head on every machine (custom camera heads excepted).
 * Broken glass is the same for everyone, late joiners included. In Combat Simulator a broken pane
@@ -61,8 +62,20 @@ Limits for now:
    and bodies are sent to the client.
 4. The end screen and `Retry` / next mission follow the host. Aborting on the client disconnects it.
 
+5. The buddy can join later. A host who starts a mission alone gets an empty buddy slot (the
+   buddy counts as dead until someone takes it). Whoever connects during the mission loads the
+   stage as it was at the start and is sent what has changed: guards that are dead, gone or newly
+   spawned, guns they dropped, objects taken, moved or destroyed, open doors, the objectives, the
+   alarm and the countdown. They spawn next to the action the way a co-op buddy respawns, but
+   without taking half of the host's health. If the buddy disconnects, the slot is free again.
+6. What mission scripts change about objects is sent to the clients (`SVC_PROP_STATE`): hidden
+   or shown, locked or unlocked doors, collectable, invincible, switched off, and how destroyed
+   a thing is. Before this a client's copy of such an object stayed as the level file had it.
+
 Known gaps in co-op: cutscenes are skipped; the buddy uses the Combat Sim character model;
-items handed out by mission scripts are not synced yet; only 2 players.
+items handed out by mission scripts are not synced yet; objects that scripts move are not;
+a late joiner starts with the mission's starting weapons and hears the default music;
+only 2 players.
 
 ### Unlocks
 

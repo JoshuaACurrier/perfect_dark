@@ -98,6 +98,7 @@ struct netchr {
 	u8 applied;         // the puppet has been placed at least once
 	u8 removeok;        // the server said to remove this chr
 	u8 removewarned;
+	u32 spawnflags;     // server: how a script spawned it (for someone who joins later)
 
 	// server: what we last sent
 	struct netchrsnap sent;
@@ -199,6 +200,20 @@ s32 netchrClientMayRemove(struct chrdata *chr)
 		sysLogPrintf(LOG_NOTE, "NET: kept chr %d (syncid %u) that would have been removed locally", chr->chrnum, chr->prop->syncid);
 	}
 	return false;
+}
+
+void netchrSetSpawnFlags(struct chrdata *chr, u32 spawnflags)
+{
+	struct netchr *nc = netchrFor(chr);
+	if (nc) {
+		nc->spawnflags = spawnflags;
+	}
+}
+
+u32 netchrGetSpawnFlags(struct chrdata *chr)
+{
+	const struct netchr *nc = netchrFor(chr);
+	return nc ? nc->spawnflags : 0;
 }
 
 void netchrOnClientSpawn(struct chrdata *chr)

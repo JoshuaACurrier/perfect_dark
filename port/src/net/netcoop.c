@@ -7,6 +7,8 @@
 // - alarm, gas and the countdown timer (SVC_MISSIONSTATE)
 // - music changes (SVC_MUSIC)
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "platform.h"
 #include "types.h"
@@ -38,6 +40,231 @@ static s32 g_NetObjSentCount = -1;
 
 static void netcoopMissionStateReset(void);
 static void netcoopMissionStateTick(void);
+static void netcoopObjStateTick(void);
+
+/* object state: what scripts (and damage) change about the things in the level */
+
+// The parts of an object that a mission script switches: shown or hidden, lockable,
+// collectable, invincible, a door's locks, and how destroyed it is. Clients run no scripts,
+// so the host compares each object with what it last sent and sends what changed.
+struct netobjstate {
+	u32 flags;
+	u32 flags2;
+	u32 flags3;
+	u32 keyflags;
+	s16 damage;
+	u8 destroyed;
+	u8 valid;
+};
+
+static struct netobjstate *g_ObjInit = NULL; // host: as the stage loaded
+static struct netobjstate *g_ObjSent = NULL; // host: as the clients know it
+static s32 g_ObjNum = 0;
+static s32 g_ObjCursor = 0;
+
+// which bits of an object's flags are synced; the same on both ends
+static void netcoopObjMasks(const struct defaultobj *obj, u32 *m1, u32 *m2, u32 *m3)
+{
+	*m1 = OBJFLAG_FORCEMORTAL | OBJFLAG_INVINCIBLE | OBJFLAG_COLLECTABLE | OBJFLAG_UNCOLLECTABLE
+		| OBJFLAG_CANNOT_ACTIVATE;
+	*m2 = OBJFLAG2_SKIPDOORLOCKEDMSG | OBJFLAG2_IMMUNETOGUNFIRE | OBJFLAG2_INVISIBLE
+		| OBJFLAG2_IMMUNETOEXPLOSIONS | OBJFLAG2_LOCKEDFRONT | OBJFLAG2_LOCKEDBACK;
+	*m3 = OBJFLAG3_PUSHABLE | OBJFLAG3_GRABBABLE | OBJFLAG3_WALKTHROUGH | OBJFLAG3_SHOWSHIELD
+		| OBJFLAG3_REACTTOSIGHT | OBJFLAG3_INTERACTABLE | OBJFLAG3_RTRACKED_YELLOW
+		| OBJFLAG3_RTRACKED_BLUE | OBJFLAG3_INFRARED;
+
+	// the top bits of the first word mean something different for each kind of object, and
+	// for some they are the machine's own business (a hovercar's "set up" mark, what a
+	// security camera sees)
+	switch (obj->type) {
+	case OBJTYPE_DOOR:
+		*m1 |= OBJFLAG_DOOR_KEEPOPEN;
+		break;
+	case OBJTYPE_LIFT:
+		*m1 |= OBJFLAG_DEACTIVATED | OBJFLAG_LIFT_TRIGGERDISABLE;
+		break;
+	case OBJTYPE_CCTV:
+		*m1 |= OBJFLAG_DEACTIVATED | OBJFLAG_CAMERA_DISABLED;
+		break;
+	case OBJTYPE_AUTOGUN:
+		*m1 |= OBJFLAG_DEACTIVATED | OBJFLAG_AUTOGUN_DAMAGED;
+		*m2 |= OBJFLAG2_AUTOGUN_MALFUNCTIONING1 | OBJFLAG2_AUTOGUN_MALFUNCTIONING2;
+		break;
+	case OBJTYPE_BASIC:
+	case OBJTYPE_ALARM:
+	case OBJTYPE_SINGLEMONITOR:
+	case OBJTYPE_MULTIMONITOR:
+	case OBJTYPE_HANGINGMONITORS:
+	case OBJTYPE_KEY:
+	case OBJTYPE_SHIELD:
+	case OBJTYPE_HOVERPROP:
+		*m1 |= OBJFLAG_DEACTIVATED;
+		break;
+	default:
+		break;
+	}
+}
+
+// an object that was in the level when it loaded (those have the same id on every machine)
+static s32 netcoopObjStateNow(s32 index, struct netobjstate *st)
+{
+	const struct prop *prop = &g_Vars.props[index];
+	memset(st, 0, sizeof(*st));
+
+	if (prop->syncid != (u32)(index + 1) || !prop->obj
+			|| (prop->type != PROPTYPE_OBJ && prop->type != PROPTYPE_WEAPON && prop->type != PROPTYPE_DOOR)) {
+		return false;
+	}
+
+	const struct defaultobj *obj = prop->obj;
+	u32 m1, m2, m3;
+	netcoopObjMasks(obj, &m1, &m2, &m3);
+	st->flags = obj->flags & m1;
+	st->flags2 = obj->flags2 & m2;
+	st->flags3 = obj->flags3 & m3;
+	st->keyflags = (prop->type == PROPTYPE_DOOR) ? prop->door->keyflags : 0;
+	st->damage = obj->damage;
+	st->destroyed = (obj->hidden2 & OBJH2FLAG_DESTROYED) ? 1 : 0;
+	st->valid = 1;
+	return true;
+}
+
+static inline s32 netcoopObjStateSame(const struct netobjstate *a, const struct netobjstate *b)
+{
+	return a->flags == b->flags && a->flags2 == b->flags2 && a->flags3 == b->flags3
+		&& a->keyflags == b->keyflags && a->damage == b->damage && a->destroyed == b->destroyed;
+}
+
+void netcoopOnStageLoaded(void)
+{
+	free(g_ObjInit);
+	free(g_ObjSent);
+	g_ObjInit = NULL;
+	g_ObjSent = NULL;
+	g_ObjNum = 0;
+	g_ObjCursor = 0;
+
+	if (g_NetMode != NETMODE_SERVER || g_Vars.normmplayerisrunning
+			|| g_StageNum == STAGE_TITLE || g_StageNum == STAGE_CITRAINING || g_Vars.maxprops <= 0) {
+		return;
+	}
+
+	g_ObjInit = calloc(g_Vars.maxprops, sizeof(*g_ObjInit));
+	g_ObjSent = calloc(g_Vars.maxprops, sizeof(*g_ObjSent));
+	if (!g_ObjInit || !g_ObjSent) {
+		free(g_ObjInit);
+		free(g_ObjSent);
+		g_ObjInit = NULL;
+		g_ObjSent = NULL;
+		return;
+	}
+
+	g_ObjNum = g_Vars.maxprops;
+	for (s32 i = 0; i < g_ObjNum; ++i) {
+		netcoopObjStateNow(i, &g_ObjInit[i]);
+		g_ObjSent[i] = g_ObjInit[i];
+	}
+}
+
+// Someone has just loaded the stage as it was at the start: send everything that has
+// changed since then again (to everyone; those who have it already see no difference).
+void netcoopOnJoin(void)
+{
+	g_NetObjSentCount = -1;
+	netcoopMissionStateReset();
+	if (g_ObjInit && g_ObjSent) {
+		memcpy(g_ObjSent, g_ObjInit, g_ObjNum * sizeof(*g_ObjSent));
+		g_ObjCursor = 0;
+	}
+}
+
+static void netcoopObjStateTick(void)
+{
+	if (!g_ObjSent || g_ObjNum > g_Vars.maxprops) {
+		return;
+	}
+
+	// a few hundred objects a pass, and no more per pass than fits in the frame's packet
+	s32 numsent = 0;
+	for (s32 n = 0; n < g_ObjNum; ++n) {
+		if (netbufWriteLeft(&g_NetMsgRel) < 256) {
+			break;
+		}
+		const s32 i = g_ObjCursor;
+		g_ObjCursor = (g_ObjCursor + 1) % g_ObjNum;
+
+		if (!g_ObjSent[i].valid) {
+			continue;
+		}
+		struct netobjstate now;
+		if (!netcoopObjStateNow(i, &now) || netcoopObjStateSame(&now, &g_ObjSent[i])) {
+			// (gone: the removal has its own message)
+			continue;
+		}
+
+		g_ObjSent[i] = now;
+		netbufWriteU8(&g_NetMsgRel, SVC_PROP_STATE);
+		netbufWriteU16(&g_NetMsgRel, i + 1);
+		netbufWriteU32(&g_NetMsgRel, now.flags);
+		netbufWriteU32(&g_NetMsgRel, now.flags2);
+		netbufWriteU32(&g_NetMsgRel, now.flags3);
+		netbufWriteU32(&g_NetMsgRel, now.keyflags);
+		netbufWriteS16(&g_NetMsgRel, now.damage);
+		netbufWriteU8(&g_NetMsgRel, now.destroyed);
+		++numsent;
+	}
+
+	if (numsent) {
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: object state: sent %d change(s)", numsent);
+	}
+}
+
+u32 netmsgSvcPropStateRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u16 syncid = netbufReadU16(src);
+	const u32 flags = netbufReadU32(src);
+	const u32 flags2 = netbufReadU32(src);
+	const u32 flags3 = netbufReadU32(src);
+	const u32 keyflags = netbufReadU32(src);
+	const s16 damage = netbufReadS16(src);
+	const u8 destroyed = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME || !syncid || syncid > g_Vars.maxprops) {
+		return src->error;
+	}
+
+	struct prop *prop = &g_Vars.props[syncid - 1];
+	if (prop->syncid != syncid || !prop->obj
+			|| (prop->type != PROPTYPE_OBJ && prop->type != PROPTYPE_WEAPON && prop->type != PROPTYPE_DOOR)) {
+		// gone here already
+		return src->error;
+	}
+
+	struct defaultobj *obj = prop->obj;
+	u32 m1, m2, m3;
+	netcoopObjMasks(obj, &m1, &m2, &m3);
+	obj->flags = (obj->flags & ~m1) | (flags & m1);
+	obj->flags2 = (obj->flags2 & ~m2) | (flags2 & m2);
+	obj->flags3 = (obj->flags3 & ~m3) | (flags3 & m3);
+	if (prop->type == PROPTYPE_DOOR) {
+		prop->door->keyflags = keyflags;
+	}
+	obj->damage = damage;
+	if (destroyed) {
+		obj->hidden2 |= OBJH2FLAG_DESTROYED;
+	} else {
+		obj->hidden2 &= ~OBJH2FLAG_DESTROYED;
+	}
+
+	static u32 numapplied = 0;
+	++numapplied;
+	if ((numapplied & (numapplied - 1)) == 0) {
+		// (1st, 2nd, 4th, 8th...: enough to see in a log that it works)
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: object state: %u applied so far (last: syncid %u)", numapplied, syncid);
+	}
+
+	return src->error;
+}
 
 void netcoopReset(void)
 {
@@ -59,6 +286,22 @@ s32 netcoopGetObjectiveStatus(s32 index, s32 *status)
 
 /* objectives */
 
+// in the log of every machine when they change (0 incomplete, 1 complete, 2 failed)
+static void netcoopLogObjectives(const u8 *statuses, s32 count)
+{
+	static char prev[64];
+	char line[64];
+	s32 len = 0;
+	line[0] = 0;
+	for (s32 i = 0; i < count && len < (s32)sizeof(line) - 4; ++i) {
+		len += snprintf(line + len, sizeof(line) - len, " %u", statuses[i]);
+	}
+	if (strcmp(line, prev)) {
+		strcpy(prev, line);
+		sysLogPrintf(LOG_NOTE | LOGFLAG_NOCON, "NET: objectives:%s", line);
+	}
+}
+
 void netcoopServerTick(void)
 {
 	if (g_NetMode != NETMODE_SERVER || g_NetLocalClient->state < CLSTATE_GAME) {
@@ -79,6 +322,7 @@ void netcoopServerTick(void)
 	nexttick = g_NetTick + 10;
 
 	netcoopMissionStateTick();
+	netcoopObjStateTick();
 
 	const s32 count = objectiveGetCount();
 	if (count <= 0 || count > MAX_OBJECTIVES) {
@@ -106,6 +350,7 @@ void netcoopServerTick(void)
 	for (s32 i = 0; i < count; ++i) {
 		netbufWriteU8(&g_NetMsgRel, now[i]);
 	}
+	netcoopLogObjectives(now, count);
 }
 
 u32 netmsgSvcObjectivesRead(struct netbuf *src, struct netclient *srccl)
@@ -124,6 +369,7 @@ u32 netmsgSvcObjectivesRead(struct netbuf *src, struct netclient *srccl)
 		g_NetObjStatus[i] = statuses[i];
 	}
 	g_NetObjValid = true;
+	netcoopLogObjectives(statuses, count < MAX_OBJECTIVES ? count : MAX_OBJECTIVES);
 
 	return src->error;
 }

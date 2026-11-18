@@ -4822,6 +4822,10 @@ Gfx *playerRenderHud(Gfx *gdl)
 						} else {
 							// Coop
 							if (g_Vars.coopplayernum >= 0 &&
+#ifndef PLATFORM_N64
+									// nobody plays this slot (or its new owner is still loading)
+									!netjoinIsParked(g_Vars.currentplayernum) &&
+#endif
 									(!g_Vars.bond->isdead || !g_Vars.coop->isdead)) {
 								f32 totalhealth;
 								u32 buddyplayernum = g_Vars.bondplayernum;

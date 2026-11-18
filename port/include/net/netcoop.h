@@ -18,6 +18,12 @@ s32 netcoopGetObjectiveStatus(s32 index, s32 *status);
 // server: forwards a hud message that a script created for a remote player
 void netcoopForwardHudmsg(const char *text, s32 type, u32 flags);
 
+// host: the stage is loaded and its props have their ids
+void netcoopOnStageLoaded(void);
+// host: someone joined mid-mission; send the whole mission state again
+void netcoopOnJoin(void);
+
+u32 netmsgSvcPropStateRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcObjectivesRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcHudmsgRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcMissionStateRead(struct netbuf *src, struct netclient *srccl);
