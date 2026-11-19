@@ -34,6 +34,7 @@
 #define SVC_HUDMSG        0x51 // hud message from a mission script
 #define SVC_MISSIONSTATE  0x52 // alarm, gas and countdown timer
 #define SVC_MUSIC         0x53 // a mission script changed the music
+#define SVC_ANTI_SPAWN    0x54 // counter-op: a player took over this guard (netcoop.c)
 #define SVC_MP_KILL       0x60 // someone killed someone (combat sim)
 #define SVC_MP_SCORES     0x61 // the whole scoreboard (sent when it changes)
 #define SVC_HITMARK       0x62 // your shot hit someone (just to the shooter)

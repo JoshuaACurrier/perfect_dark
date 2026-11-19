@@ -20,6 +20,7 @@
 extern MenuItemHandlerResult menuhandlerMainMenuCombatSimulator(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMpAdvancedSetup(s32 operation, struct menuitem *item, union handlerdata *data);
 extern MenuItemHandlerResult menuhandlerMainMenuCooperative(s32 operation, struct menuitem *item, union handlerdata *data);
+extern MenuItemHandlerResult menuhandlerMainMenuCounterOperative(s32 operation, struct menuitem *item, union handlerdata *data);
 extern struct menuitem g_MpPlayerSetup234MenuItems[];
 extern struct menudialogdef g_NetJoinPlayerSetupMenuDialog;
 
@@ -90,6 +91,19 @@ MenuItemHandlerResult menuhandlerHostCoop(s32 operation, struct menuitem *item, 
 	return 0;
 }
 
+MenuItemHandlerResult menuhandlerHostAnti(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		if (netStartServer(g_NetMenuPort, g_NetMenuMaxPlayers) == 0) {
+			// the host plays Joanna; everyone who has joined by the time the mission is
+			// accepted plays a guard
+			menuhandlerMainMenuCounterOperative(MENUOP_SET, NULL, NULL);
+		}
+	}
+
+	return 0;
+}
+
 struct menuitem g_NetHostMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
@@ -122,6 +136,14 @@ struct menuitem g_NetHostMenuItems[] = {
 		(uintptr_t)"Co-Operative Mission\n",
 		0,
 		menuhandlerHostCoop,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Counter-Operative Mission\n",
+		0,
+		menuhandlerHostAnti,
 	},
 	{
 		// the host's cheats apply to everyone in the match

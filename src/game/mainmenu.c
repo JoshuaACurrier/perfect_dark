@@ -743,7 +743,32 @@ MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *i
 		titleSetNextStage(g_MissionConfig.stagenum);
 
 #ifndef PLATFORM_N64
-		if (g_MissionConfig.iscoop && g_NetMode == NETMODE_SERVER) {
+		if (g_MissionConfig.isanti && g_NetMode == NETMODE_SERVER) {
+			// online counter-op: the host is Joanna, everyone else takes over guards
+			s32 numplayers = 0;
+			for (s32 i = 0; i < g_NetMaxClients; ++i) {
+				if (g_NetClients[i].state >= CLSTATE_LOBBY) {
+					++numplayers;
+				}
+			}
+			// spare slots for people who join during the mission (netjoin.c)
+			numplayers += netjoinSpareSlots();
+			if (numplayers > MAX_PLAYERS) {
+				numplayers = MAX_PLAYERS;
+			}
+			if (numplayers > g_NetMaxClients) {
+				numplayers = g_NetMaxClients;
+			}
+			g_Vars.numaibuddies = 0;
+			g_Vars.bondplayernum = 0;
+			g_Vars.coopplayernum = -1;
+			// (alone and with nobody able to join, it is the plain mission)
+			g_Vars.antiplayernum = (numplayers >= 2) ? 1 : -1;
+			g_Vars.antiheadnum = -1;
+			g_Vars.antibodynum = -1;
+			setNumPlayers(numplayers);
+			g_MpSetup.chrslots = (g_MpSetup.chrslots & ~((1 << MAX_PLAYERS) - 1)) | ((1 << numplayers) - 1);
+		} else if (g_MissionConfig.iscoop && g_NetMode == NETMODE_SERVER) {
 			// online co-op: the host is Bond, everyone else is a co-op buddy
 			s32 numplayers = 0;
 			for (s32 i = 0; i < g_NetMaxClients; ++i) {

@@ -23,6 +23,16 @@ void netcoopOnStageLoaded(void);
 // host: someone joined mid-mission; send the whole mission state again
 void netcoopOnJoin(void);
 
+// Counter-op. Host: the current player has just taken over this guard (which is about to
+// be freed). Client: the current player is spawning; do what the host said about it.
+struct chrdata;
+void netcoopOnAntiSpawn(struct chrdata *hostchr);
+void netcoopAntiClientSpawn(void);
+void netcoopAntiDeferSpawn(void);
+void netcoopAntiWriteAll(struct netbuf *dst);
+void netcoopClientTick(void);
+u32 netmsgSvcAntiSpawnRead(struct netbuf *src, struct netclient *srccl);
+
 u32 netmsgSvcPropStateRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcObjectivesRead(struct netbuf *src, struct netclient *srccl);
 u32 netmsgSvcHudmsgRead(struct netbuf *src, struct netclient *srccl);

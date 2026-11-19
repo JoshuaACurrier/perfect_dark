@@ -77,6 +77,7 @@
 #include "string.h"
 #include "net/net.h"
 #include "net/netjoin.h"
+#include "net/netcoop.h"
 #include "system.h"
 #include "hudext.h"
 #include "net/netmsg.h"
@@ -947,6 +948,10 @@ bool playerSpawnAnti(struct chrdata *hostchr, bool force)
 		playerchr->radius = hostchr->radius;
 		g_Vars.currentplayer->bond2.radius = hostchr->radius;
 
+#ifndef PLATFORM_N64
+		netcoopOnAntiSpawn(hostchr);
+#endif
+
 		chrRemove(hostprop, true);
 		propDeregisterRooms(hostprop);
 		propDelist(hostprop);
@@ -1022,6 +1027,16 @@ void playerSpawn(void)
 				playerTickChrBody();
 			}
 
+#ifndef PLATFORM_N64
+			// only the host picks the guard; it tells us which, and what we get (netcoop.c)
+			if (g_NetMode == NETMODE_CLIENT) {
+				netcoopAntiClientSpawn();
+			} else if (g_NetMode == NETMODE_SERVER && g_Vars.lvframenum <= 0) {
+				// The stage is still loading. Taking a guard out now would leave the host's
+				// list of props different from the clients' before they are numbered.
+				netcoopAntiDeferSpawn();
+			} else {
+#endif
 			for (i = 0; i < chrsGetNumSlots(); i++) {
 				if (g_ChrSlots[i].model
 						&& g_ChrSlots[i].prop
@@ -1119,6 +1134,10 @@ void playerSpawn(void)
 					force = true;
 				}
 			}
+
+#ifndef PLATFORM_N64
+			}
+#endif
 
 			if (g_Vars.currentplayer->prop->chr) {
 				g_Vars.currentplayer->prop->chr->blurdrugamount = 0;
@@ -4810,7 +4829,9 @@ Gfx *playerRenderHud(Gfx *gdl)
 						if (g_Vars.antiplayernum >= 0 && PLAYER_IS_ANTI(g_Vars.currentplayer)) {
 							// Anti
 #ifndef PLATFORM_N64
-							if (g_NetMode == NETMODE_SERVER && g_Vars.currentplayer->isremote) {
+							if (netjoinIsParked(g_Vars.currentplayernum)) {
+								// nobody plays this slot (or its new owner is still loading)
+							} else if (g_NetMode == NETMODE_SERVER && g_Vars.currentplayer->isremote) {
 								if (g_Vars.currentplayer->client->inmove[0].ucmd & UCMD_RESPAWN) {
 									g_Vars.currentplayer->dostartnewlife = true;
 								}

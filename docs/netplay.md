@@ -27,7 +27,7 @@ Expect nothing to work right.
 
 ### Joining and leaving a match that is running
 
-You can join a Combat Simulator match or a co-op mission that has already started. The number of players in a match is
+You can join a Combat Simulator match, a co-op mission or a counter-operative mission that has already started. The number of players in a match is
 fixed when its stage loads, so the host starts every match with a few spare player slots that nobody
 controls (`Net.Server.SpareSlots`, default 2, up to 8 players in all; an empty slot's player is kept
 dead and hidden on every machine and isn't on the scoreboard). When you connect during a match and a
@@ -76,6 +76,25 @@ Known gaps in co-op: cutscenes are skipped; the buddy uses the Combat Sim charac
 items handed out by mission scripts are not synced yet; objects that scripts move are not;
 a late joiner starts with the mission's starting weapons and hears the default music;
 only 2 players.
+
+### Counter-operative missions (2 to 8 players)
+
+1. Host: `Network Game` -> `Host Game` -> `Counter-Operative Mission`, then pick the mission and
+   difficulty. The host plays Joanna. Everyone who has joined by the time the host accepts the
+   mission plays a guard. (Alone, the host just plays the mission.)
+2. Each counter-operative takes over a guard near Joanna that she is not looking at, with that
+   guard's looks, gun and health. Killed, they press fire to take over another one. The mission
+   ends when Joanna dies, aborts or completes it; the end screens follow the host.
+3. Only the host chooses the guard (`SVC_ANTI_SPAWN`): it removes the guard everywhere, moves the
+   player there and tells every machine the body, head and gun. `pd.log` has
+   `NET: counter-op: player N takes over guard ...` on the host and `... is now guard ...` on the
+   clients; the lines should name the same guards in the same order.
+
+4. Joining and leaving work as in the other modes: the mission starts with spare slots
+   (`Net.Server.SpareSlots`), someone who connects during it loads in and takes over a guard, and
+   a counter-operative who disconnects just dies.
+
+Limits for now: the host is always Joanna.
 
 ### Unlocks
 

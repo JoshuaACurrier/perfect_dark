@@ -905,6 +905,7 @@ static void netClientEvReceive(struct netclient *cl)
 			case SVC_CHR_SHOT: rc = netmsgSvcChrShotRead(&cl->in, cl); break;
 			case SVC_OBJECTIVES: rc = netmsgSvcObjectivesRead(&cl->in, cl); break;
 			case SVC_PROP_STATE: rc = netmsgSvcPropStateRead(&cl->in, cl); break;
+			case SVC_ANTI_SPAWN: rc = netmsgSvcAntiSpawnRead(&cl->in, cl); break;
 			case SVC_HUDMSG: rc = netmsgSvcHudmsgRead(&cl->in, cl); break;
 			case SVC_MISSIONSTATE: rc = netmsgSvcMissionStateRead(&cl->in, cl); break;
 			case SVC_MUSIC: rc = netmsgSvcMusicRead(&cl->in, cl); break;
@@ -1085,6 +1086,7 @@ void netEndFrame(void)
 	// empty player slots stay down; the host lets waiting clients into a running match
 	// (now, so that what it tells them comes after everything already sent)
 	netjoinTick();
+	netcoopClientTick();
 	netscenLogState();
 	netjoinServerTick();
 

@@ -41,6 +41,7 @@
 #include <math.h>
 #include "platform.h"
 #include "net/netenet.h"
+#include "game/player.h"
 #include "net/net.h"
 #include "net/netauto.h"
 #include "net/netlag.h"
@@ -86,6 +87,7 @@ static s32 g_NetAutoWeapon = -1;
 static s32 g_NetAutoAltFire = 0;
 static s32 g_NetAutoAimTest = 0;
 static s32 g_NetAutoCoopStage = -1;
+static s32 g_NetAutoAnti = false;
 static s32 g_NetAutoDifficulty = 0;
 static s32 g_NetAutoQuitSecs = 0;
 static s32 g_NetAutoAbortSecs = 0;
@@ -93,6 +95,7 @@ static s32 g_NetAutoAborted = 0;
 static s32 g_NetAutoRounds = 1;
 static u32 g_NetAutoMatchTicks = 0;
 static s32 g_NetAutoKillSecs = 0;
+static s32 g_NetAutoAntiKillSecs = 0;
 static s32 g_NetAutoHudTest = 0;
 static s32 g_NetAutoTeams = 0;
 static s32 g_NetAutoAlarmSecs = 0;
@@ -127,11 +130,16 @@ void netAutoInit(void)
 	g_NetAutoWeapon = sysArgGetInt("--net-weapon", -1);
 	g_NetAutoAltFire = sysArgCheck("--net-altfire");
 	g_NetAutoCoopStage = sysArgGetInt("--net-coop", -1);
+	if (sysArgGetInt("--net-anti", -1) > 0) {
+		g_NetAutoCoopStage = sysArgGetInt("--net-anti", -1);
+		g_NetAutoAnti = true;
+	}
 	g_NetAutoDifficulty = sysArgGetInt("--net-difficulty", 0);
 	g_NetAutoQuitSecs = sysArgGetInt("--net-autoquit", 0);
 	g_NetAutoAbortSecs = sysArgGetInt("--net-autoabort", 0);
 	g_NetAutoRounds = sysArgGetInt("--net-rounds", 1);
 	g_NetAutoKillSecs = sysArgGetInt("--net-autokill", 0);
+	g_NetAutoAntiKillSecs = sysArgGetInt("--net-antikill", 0);
 	g_NetAutoHudTest = sysArgCheck("--net-hudtest");
 	g_NetAutoTeams = sysArgCheck("--net-teams");
 	g_NetAutoAimTest = sysArgCheck("--net-aimtest");
@@ -197,8 +205,8 @@ extern MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menu
 
 static void netAutoStartCoop(void)
 {
-	g_MissionConfig.iscoop = true;
-	g_MissionConfig.isanti = false;
+	g_MissionConfig.iscoop = !g_NetAutoAnti;
+	g_MissionConfig.isanti = g_NetAutoAnti;
 	g_MissionConfig.pdmode = false;
 	g_MissionConfig.stagenum = g_NetAutoCoopStage;
 	g_MissionConfig.difficulty = (g_NetAutoDifficulty >= DIFF_A && g_NetAutoDifficulty <= DIFF_PA) ? g_NetAutoDifficulty : DIFF_A;
@@ -584,6 +592,37 @@ static void netAutoTickKill(void)
 	chrDamageByImpact(best, 50.f, &dir, &gset, player->prop, HITPART_TORSO);
 }
 
+/* antikill: the host kills every counter-operative every few seconds, so they take over new guards */
+
+static void netAutoTickAntiKill(void)
+{
+	static u32 nextkill = 0;
+
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoAntiKillSecs <= 0 || g_Vars.antiplayernum < 0
+			|| !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_GAME || g_Vars.tickmode != TICKMODE_NORMAL) {
+		return;
+	}
+
+	if (!nextkill) {
+		nextkill = g_NetAutoGameTicks + (u32)g_NetAutoAntiKillSecs * 60;
+	}
+	if (g_NetAutoGameTicks < nextkill) {
+		return;
+	}
+	nextkill = g_NetAutoGameTicks + (u32)g_NetAutoAntiKillSecs * 60;
+
+	const s32 prevplayernum = g_Vars.currentplayernum;
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		struct player *pl = g_Vars.players[p];
+		if (pl && pl != g_Vars.bond && pl->prop && !pl->isdead) {
+			sysLogPrintf(LOG_NOTE, "NET: antikill: killing player %d", p);
+			setCurrentPlayerNum(p);
+			playerDieByShooter(g_Vars.bondplayernum, true);
+		}
+	}
+	setCurrentPlayerNum(prevplayernum);
+}
+
 /* autoalarm: exercise the mission state sync */
 
 static void netAutoTickAlarm(void)
@@ -692,6 +731,7 @@ void netAutoTick(void)
 	netAutoTickStart();
 	netAutoTickDump();
 	netAutoTickKill();
+	netAutoTickAntiKill();
 	netAutoTickAlarm();
 	netAutoTickGlass();
 	netAutoTickQuit();

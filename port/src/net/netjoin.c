@@ -74,7 +74,10 @@ static s32 g_AwaitSpawn = false;
 
 static inline bool netjoinSlotInMatch(s32 p)
 {
-	return p >= 0 && p < MAX_PLAYERS && (g_MpSetup.chrslots & (1 << p)) && p < PLAYERCOUNT();
+	if (p < 0 || p >= MAX_PLAYERS || !g_Vars.players[p]) {
+		return false;
+	}
+	return !g_Vars.normmplayerisrunning || (g_MpSetup.chrslots & (1 << p)) != 0;
 }
 
 s32 netjoinSpareSlots(void)
@@ -246,10 +249,6 @@ void netjoinOnPlayersAllocated(void)
 	memset(g_Hold, 0, sizeof(g_Hold));
 	memset(g_Rebody, 0, sizeof(g_Rebody));
 
-	if (g_Vars.antiplayernum >= 0) {
-		return;
-	}
-
 	u8 owned = 0;
 	for (s32 i = 0; i < g_NetMaxClients; ++i) {
 		const struct netclient *cl = &g_NetClients[i];
@@ -261,7 +260,7 @@ void netjoinOnPlayersAllocated(void)
 	s32 num = 0;
 	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
 		// (a mission's player slots are only written to chrslots after this)
-		const bool inmatch = (g_Vars.coopplayernum >= 0) ? (g_Vars.players[p] != NULL) : ((g_MpSetup.chrslots & (1 << p)) != 0);
+		const bool inmatch = (g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0) ? (g_Vars.players[p] != NULL) : ((g_MpSetup.chrslots & (1 << p)) != 0);
 		if (inmatch && !(owned & (1 << p))) {
 			if (g_NetMode == NETMODE_CLIENT) {
 				// the same body on every machine
@@ -409,7 +408,7 @@ static void netjoinLogBodies(void)
 void netjoinTick(void)
 {
 	if (!g_NetMode || !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME
-			|| !(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0) || g_Vars.antiplayernum >= 0) {
+			|| !(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0)) {
 		return;
 	}
 
@@ -545,7 +544,7 @@ void netjoinServerOnLeave(struct netclient *cl)
 		return;
 	}
 
-	if (g_Vars.antiplayernum >= 0 || !g_NetServerJoinInProgress) {
+	if (!g_NetServerJoinInProgress) {
 		if (cl->config) {
 			cl->config->client = NULL;
 		}
@@ -730,6 +729,8 @@ static void netjoinWriteSnapshot(struct netclient *joiner, struct netbuf *buf, u
 		netscenWrite(buf);
 		netmsgSvcMpScoresWrite(buf);
 	} else {
+		// which guard each counter-operative is at the moment
+		netcoopAntiWriteAll(buf);
 		// objectives, alarm and timer, and what scripts have changed about objects: all of
 		// it goes out again with the next updates
 		netcoopOnJoin();
@@ -814,7 +815,7 @@ void netjoinServerTick(void)
 
 	netjoinServerResync();
 
-	if (!(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0) || g_Vars.antiplayernum >= 0
+	if (!(g_Vars.normmplayerisrunning || g_Vars.coopplayernum >= 0 || g_Vars.antiplayernum >= 0)
 			|| g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum < 60 || g_NetTick < g_NextJoinTick) {
 		return;
 	}

@@ -16,6 +16,10 @@
 #include "data.h"
 #include "bss.h"
 #include "game/hudmsg.h"
+#include "game/chr.h"
+#include "game/inv.h"
+#include "game/bondgun.h"
+#include "game/player.h"
 #include "game/objectives.h"
 #include "game/playermgr.h"
 #include "game/propobj.h"
@@ -26,6 +30,8 @@
 #include "net/netbuf.h"
 #include "net/netmsg.h"
 #include "net/netcoop.h"
+#include "net/netchr.h"
+#include "net/netjoin.h"
 
 // > 0 while the server is executing an AI or mission script
 s32 g_NetInScript = 0;
@@ -41,6 +47,7 @@ static s32 g_NetObjSentCount = -1;
 static void netcoopMissionStateReset(void);
 static void netcoopMissionStateTick(void);
 static void netcoopObjStateTick(void);
+static void netcoopAntiTick(void);
 
 /* object state: what scripts (and damage) change about the things in the level */
 
@@ -266,8 +273,236 @@ u32 netmsgSvcPropStateRead(struct netbuf *src, struct netclient *srccl)
 	return src->error;
 }
 
+/* counter-op: which guard a player took over */
+
+// The host picks the guard a counter-operative spawns into (the one nearest Joanna that she
+// isn't looking at), removes it, and gives the player its place, looks, gun and health. Place
+// and health travel with the normal player messages; the rest is here.
+struct netantispawn {
+	u8 valid;
+	u8 unsent;      // host: made while the stage was loading, goes out with the first update
+	u8 dual;
+	s8 weaponnum;
+	s16 bodynum;
+	s16 headnum;
+	u32 guardsyncid;
+};
+
+// host: by player number, the last one for each. client: by local player number, not applied yet.
+static struct netantispawn g_AntiSpawn[MAX_PLAYERS];
+
+static void netcoopAntiSpawnWrite(struct netbuf *dst, s32 playernum)
+{
+	const struct netantispawn *as = &g_AntiSpawn[playernum];
+	const struct player *pl = g_Vars.players[playernum];
+	const struct netclient *cl = (pl && pl->client) ? pl->client : NULL;
+	if (!as->valid || !cl) {
+		return;
+	}
+	netbufWriteU8(dst, SVC_ANTI_SPAWN);
+	netbufWriteU8(dst, cl->id);
+	netbufWriteU32(dst, as->guardsyncid);
+	netbufWriteS16(dst, as->bodynum);
+	netbufWriteS16(dst, as->headnum);
+	netbufWriteS8(dst, as->weaponnum);
+	netbufWriteU8(dst, as->dual);
+}
+
+void netcoopOnAntiSpawn(struct chrdata *hostchr)
+{
+	const s32 p = g_Vars.currentplayernum;
+	if (g_NetMode != NETMODE_SERVER || p < 0 || p >= MAX_PLAYERS || !hostchr || !hostchr->prop) {
+		return;
+	}
+
+	struct netantispawn *as = &g_AntiSpawn[p];
+	struct prop *held = hostchr->weapons_held[0] ? hostchr->weapons_held[0] : hostchr->weapons_held[1];
+	as->valid = 1;
+	as->guardsyncid = hostchr->prop->syncid;
+	as->bodynum = g_Vars.antibodynum;
+	as->headnum = g_Vars.antiheadnum;
+	as->dual = (hostchr->weapons_held[0] && hostchr->weapons_held[1]) ? 1 : 0;
+	as->weaponnum = (held && held->weapon) ? held->weapon->weaponnum : WEAPON_UNARMED;
+	if (as->weaponnum == WEAPON_SUPERDRAGON) {
+		as->weaponnum = WEAPON_DRAGON;
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: counter-op: player %d takes over guard %d (syncid %u): body %d, head %d, weapon %d%s",
+		p, hostchr->chrnum, as->guardsyncid, as->bodynum, as->headnum, as->weaponnum, as->dual ? " x2" : "");
+
+	if (g_Vars.lvframenum > 0 && g_NetLocalClient && g_NetLocalClient->state >= CLSTATE_GAME) {
+		as->unsent = 0;
+		netcoopAntiSpawnWrite(&g_NetMsgRel, p);
+	} else {
+		// the stage is still loading: nothing sent now would arrive
+		as->unsent = 1;
+	}
+}
+
+// for someone who joins mid-mission: who is which guard now
+void netcoopAntiWriteAll(struct netbuf *dst)
+{
+	if (g_Vars.antiplayernum < 0) {
+		return;
+	}
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_Vars.players[p] && !g_Vars.players[p]->isdead && !netjoinIsParked(p)) {
+			netcoopAntiSpawnWrite(dst, p);
+		}
+	}
+}
+
+static void netcoopAntiTick(void)
+{
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_AntiSpawn[p].valid && g_AntiSpawn[p].unsent) {
+			g_AntiSpawn[p].unsent = 0;
+			netcoopAntiSpawnWrite(&g_NetMsgRel, p);
+		}
+	}
+}
+
+// client: make local player p the guard the host said it is now
+static void netcoopAntiApply(s32 p)
+{
+	struct netantispawn *as = &g_AntiSpawn[p];
+	struct player *pl = g_Vars.players[p];
+	if (!as->valid || !pl || !pl->prop || !pl->prop->chr) {
+		return;
+	}
+	as->valid = 0;
+
+	const s32 prevplayernum = g_Vars.currentplayernum;
+	setCurrentPlayerNum(p);
+
+	// the guard itself is gone
+	struct prop *guard = netPropBySyncId(as->guardsyncid);
+	if (guard && guard->type == PROPTYPE_CHR && guard->chr && !guard->chr->aibot) {
+		netchrAllowRemove(guard->chr);
+		guard->chr->chrflags |= CHRCFLAG_HIDDEN;
+		guard->chr->hidden |= CHRHFLAG_DELETING;
+	}
+
+	// its gun (other players' guns come with their stats)
+	if (g_NetLocalClient && pl == g_NetLocalClient->player && as->weaponnum > WEAPON_UNARMED) {
+		if (as->dual) {
+			invGiveSingleWeapon(as->weaponnum);
+			invGiveDoubleWeapon(as->weaponnum, as->weaponnum);
+			bgunEquipWeapon2(HAND_RIGHT, as->weaponnum);
+			bgunEquipWeapon2(HAND_LEFT, as->weaponnum);
+		} else {
+			invGiveSingleWeapon(as->weaponnum);
+			bgunEquipWeapon2(HAND_RIGHT, as->weaponnum);
+		}
+		pl->invdowntime = TICKS(-40);
+		pl->usedowntime = TICKS(-40);
+	}
+
+	// and its looks: drop the model and build a new one, as the host did
+	if (as->bodynum >= 0 && pl->haschrbody && pl->prop->chr->model) {
+		g_Vars.antibodynum = as->bodynum;
+		g_Vars.antiheadnum = as->headnum;
+		pl->haschrbody = false;
+		pl->model00d4 = NULL;
+		chrRemove(pl->prop, false);
+		playerTickChrBody();
+	}
+
+	sysLogPrintf(LOG_NOTE, "NET: counter-op: player %d is now guard syncid %u: body %d, head %d, weapon %d%s",
+		p, as->guardsyncid, pl->prop->chr->bodynum, pl->prop->chr->headnum, as->weaponnum, as->dual ? " x2" : "");
+
+	setCurrentPlayerNum(prevplayernum);
+}
+
+// host: the player spawned while the stage was loading; it takes over a guard once it is up
+static u8 g_AntiDeferred[MAX_PLAYERS];
+
+void netcoopAntiDeferSpawn(void)
+{
+	if (g_Vars.currentplayernum >= 0 && g_Vars.currentplayernum < MAX_PLAYERS) {
+		g_AntiDeferred[g_Vars.currentplayernum] = 1;
+	}
+}
+
+// every frame. Host: the takeovers put off at load. Client: a takeover that arrived while
+// its player could not be touched yet.
+void netcoopClientTick(void)
+{
+	if (!g_NetMode || g_Vars.antiplayernum < 0 || g_Vars.tickmode != TICKMODE_NORMAL || g_Vars.lvframenum <= 2
+			|| !g_NetLocalClient || g_NetLocalClient->state < CLSTATE_GAME) {
+		return;
+	}
+	if (g_NetMode == NETMODE_SERVER) {
+		for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+			if (g_AntiDeferred[p]) {
+				g_AntiDeferred[p] = 0;
+				if (g_Vars.players[p] && g_Vars.players[p] != g_Vars.bond && !netjoinIsParked(p)) {
+					g_Vars.players[p]->dostartnewlife = true;
+				}
+			}
+		}
+		return;
+	}
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_AntiSpawn[p].valid && g_Vars.players[p] && !g_Vars.players[p]->isdead) {
+			netcoopAntiApply(p);
+		}
+	}
+}
+
+void netcoopAntiClientSpawn(void)
+{
+	if (g_Vars.currentplayernum >= 0 && g_Vars.currentplayernum < MAX_PLAYERS) {
+		netcoopAntiApply(g_Vars.currentplayernum);
+	}
+}
+
+u32 netmsgSvcAntiSpawnRead(struct netbuf *src, struct netclient *srccl)
+{
+	const u8 clid = netbufReadU8(src);
+	const u32 guardsyncid = netbufReadU32(src);
+	const s16 bodynum = netbufReadS16(src);
+	const s16 headnum = netbufReadS16(src);
+	const s8 weaponnum = netbufReadS8(src);
+	const u8 dual = netbufReadU8(src);
+
+	if (src->error || srccl->state < CLSTATE_GAME || clid >= NET_MAX_CLIENTS) {
+		return src->error;
+	}
+
+	const struct netclient *cl = &g_NetClients[clid];
+	if (cl->state < CLSTATE_GAME || !cl->player || cl->playernum >= MAX_PLAYERS
+			|| bodynum < 0 || bodynum >= ARRAYCOUNT(g_HeadsAndBodies) || headnum >= ARRAYCOUNT(g_HeadsAndBodies)
+			|| weaponnum < WEAPON_UNARMED || weaponnum > WEAPON_COMBATBOOST) {
+		return src->error;
+	}
+
+	struct netantispawn *as = &g_AntiSpawn[cl->playernum];
+	as->valid = 1;
+	as->guardsyncid = guardsyncid;
+	as->bodynum = bodynum;
+	as->headnum = headnum;
+	as->weaponnum = weaponnum;
+	as->dual = dual;
+
+	// usually this is here before the player's "alive again", and is applied when they
+	// spawn; if they are up already, now
+	if (!cl->player->isdead && g_Vars.lvframenum > 2) {
+		netcoopAntiApply(cl->playernum);
+	}
+
+	return src->error;
+}
+
 void netcoopReset(void)
 {
+	// (on the host this runs while the stage loads, after the players have spawned: the
+	// takeovers made during this load are still waiting to be sent)
+	for (s32 p = 0; p < MAX_PLAYERS; ++p) {
+		if (g_NetMode != NETMODE_SERVER || !g_AntiSpawn[p].unsent) {
+			memset(&g_AntiSpawn[p], 0, sizeof(g_AntiSpawn[p]));
+		}
+	}
 	memset(g_NetObjStatus, OBJECTIVE_INCOMPLETE, sizeof(g_NetObjStatus));
 	memset(g_NetObjSent, 0xff, sizeof(g_NetObjSent));
 	g_NetObjValid = false;
@@ -323,6 +558,7 @@ void netcoopServerTick(void)
 
 	netcoopMissionStateTick();
 	netcoopObjStateTick();
+	netcoopAntiTick();
 
 	const s32 count = objectiveGetCount();
 	if (count <= 0 || count > MAX_OBJECTIVES) {
