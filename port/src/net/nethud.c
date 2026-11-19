@@ -96,7 +96,10 @@ static f32 g_FeedTimes[FEED_LINES];
 static s32 g_FeedNum = 0;
 
 static s32 g_ScoreboardHeld = false;
-static u32 g_ChatBlockUntil = 0; // g_NetTick until which the keys that closed the chat are still ignored
+// time (sysGetSeconds) until which the keys that closed the chat are still ignored. Real time,
+// not g_NetTick: the tick restarts at 0 with every new session, which left the menus dead
+// for as long as the last session had run
+static f32 g_ChatBlockUntil = 0.f;
 
 static void nethudCopyName(char *dst, size_t dstlen, const char *src)
 {
@@ -131,7 +134,14 @@ s32 nethudIsTyping(void)
 // must not reach the game or the menus
 s32 nethudBlocksInput(void)
 {
-	return g_NetMode && (g_ChatTyping || g_NetTick < g_ChatBlockUntil);
+	if (!g_NetMode) {
+		return false;
+	}
+	if (g_ChatTyping) {
+		return true;
+	}
+	const f32 now = sysGetSeconds();
+	return now < g_ChatBlockUntil && now > g_ChatBlockUntil - 1.f;
 }
 
 // in a Combat Simulator match the keyboard's Tab is the scoreboard key and nothing else
@@ -340,7 +350,7 @@ static void nethudServerRoster(void)
 
 static void nethudStopTyping(void)
 {
-	g_ChatBlockUntil = g_NetTick + 12;
+	g_ChatBlockUntil = sysGetSeconds() + 0.2f;
 	g_ChatTyping = false;
 	g_ChatInput[0] = '\0';
 	g_ChatInputCol = 0;
@@ -484,9 +494,11 @@ static Gfx *nethudRenderChat(Gfx *gdl, s32 x, s32 bottom, bool always)
 
 	if (g_ChatTyping) {
 		char line[CHAT_INPUT_MAX + 8];
-		// show the end of a long line
-		const s32 skip = g_ChatInputCol > CHAT_COLS - 4 ? g_ChatInputCol - (CHAT_COLS - 4) : 0;
-		snprintf(line, sizeof(line), "> %s_", g_ChatInput + skip);
+		// show the end of a long line: the font is proportional, so measure it
+		s32 skip = 0;
+		do {
+			snprintf(line, sizeof(line), "> %s_", g_ChatInput + skip);
+		} while (nethudTextWidth(line) > CHAT_W - 8 && g_ChatInput[skip++]);
 		gdl = nethudText(gdl, x + 3, y, line, COL_YOU);
 		y -= ROW_H;
 	} else if (always) {
