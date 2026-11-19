@@ -258,7 +258,7 @@ s32 objectiveCheck(s32 index)
 							prevplayernum = g_Vars.currentplayernum;
 
 							for (i = 0; i < PLAYERCOUNT(); i++) {
-								if (g_Vars.players[i] == g_Vars.bond || g_Vars.players[i] == g_Vars.coop) {
+								if (PLAYER_IS_BOND_OR_COOP(g_Vars.players[i])) {
 									setCurrentPlayerNum(i);
 
 									if (invHasProp(obj->prop)) {
@@ -285,7 +285,7 @@ s32 objectiveCheck(s32 index)
 							s32 prevplayernum = g_Vars.currentplayernum;
 
 							for (i = 0; i < PLAYERCOUNT(); i++) {
-								if (g_Vars.players[i] == g_Vars.bond || g_Vars.players[i] == g_Vars.coop) {
+								if (PLAYER_IS_BOND_OR_COOP(g_Vars.players[i])) {
 									setCurrentPlayerNum(i);
 
 									if (invHasProp(obj->prop)) {
@@ -383,7 +383,7 @@ void objectivesShowHudmsg(char *buffer, s32 hudmsgtype)
 	for (i = 0; i < PLAYERCOUNT(); i++) {
 		setCurrentPlayerNum(i);
 
-		if (g_Vars.currentplayer == g_Vars.bond || g_Vars.currentplayer == g_Vars.coop) {
+		if (PLAYER_IS_BOND_OR_COOP(g_Vars.currentplayer)) {
 			hudmsgCreateWithFlags(buffer, hudmsgtype, HUDMSGFLAG_DELAY | HUDMSGFLAG_ALLOWDUPES);
 		}
 	}

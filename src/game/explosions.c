@@ -995,8 +995,8 @@ void explosionInflictDamage(struct prop *expprop)
 						}
 					} else if (exp->owner == g_Vars.bondplayernum) {
 						ownerprop = g_Vars.bond->prop;
-					} else if (g_Vars.coopplayernum >= 0 && exp->owner == g_Vars.coopplayernum) {
-						ownerprop = g_Vars.coop->prop;
+					} else if (PLAYERNUM_IS_COOP(exp->owner) && exp->owner >= 0 && exp->owner < MAX_PLAYERS && g_Vars.players[exp->owner]) {
+						ownerprop = g_Vars.players[exp->owner]->prop;
 					} else if (g_Vars.antiplayernum >= 0 && EXPLOSION_OWNER_IS_ANTI_PLAYER(exp->owner)) {
 #if PLATFORM_N64
 						ownerprop = g_Vars.anti->prop;
@@ -1226,8 +1226,8 @@ u32 explosionTick(struct prop *prop)
 #else
 				chr = mpGetChrFromPlayerIndex(exp->owner);
 #endif
-			} else if (g_Vars.coopplayernum >= 0 && exp->owner == g_Vars.coopplayernum) {
-				chr = g_Vars.coop->prop->chr;
+			} else if (PLAYERNUM_IS_COOP(exp->owner) && exp->owner >= 0 && exp->owner < MAX_PLAYERS && g_Vars.players[exp->owner]) {
+				chr = g_Vars.players[exp->owner]->prop->chr;
 			} else {
 				chr = g_Vars.bond->prop->chr;
 			}

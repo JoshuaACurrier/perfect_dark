@@ -598,7 +598,7 @@ static void netAutoTickAntiKill(void)
 {
 	static u32 nextkill = 0;
 
-	if (g_NetMode != NETMODE_SERVER || g_NetAutoAntiKillSecs <= 0 || g_Vars.antiplayernum < 0
+	if (g_NetMode != NETMODE_SERVER || g_NetAutoAntiKillSecs <= 0 || (g_Vars.antiplayernum < 0 && g_Vars.coopplayernum < 0)
 			|| !g_NetLocalClient || g_NetLocalClient->state != CLSTATE_GAME || g_Vars.tickmode != TICKMODE_NORMAL) {
 		return;
 	}

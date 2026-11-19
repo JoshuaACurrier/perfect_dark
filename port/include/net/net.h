@@ -6,7 +6,7 @@
 #include "net/netbuf.h"
 #include "net/netsmooth.h"
 
-#define NET_PROTOCOL_VER 30
+#define NET_PROTOCOL_VER 31
 
 #define NET_QUERY_MAGIC "PDQM\x01"
 

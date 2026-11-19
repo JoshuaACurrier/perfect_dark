@@ -1,5 +1,6 @@
 #include <ultra64.h>
 #include "constants.h"
+#include "game/playermgr.h"
 #include "game/bossfile.h"
 #include "game/cheats.h"
 #include "game/game_006900.h"
@@ -320,11 +321,11 @@ char *endscreenMenuTextMissionStatus(struct menuitem *item)
 	}
 
 	if (g_Vars.coopplayernum >= 0) {
-		if (g_Vars.bond->aborted || g_Vars.coop->aborted) {
+		if (g_Vars.bond->aborted || coopAnyAborted()) {
 			return langGet(L_OPTIONS_295); // "Aborted"
 		}
 
-		if (g_Vars.bond->isdead && g_Vars.coop->isdead) {
+		if (coopAllDead()) {
 			return langGet(L_OPTIONS_293); // "Failed"
 		}
 	} else if (g_Vars.antiplayernum >= 0) {
@@ -1709,14 +1710,14 @@ void endscreenPushCoop(void)
 	g_Menus[g_MpPlayerNum].playernum = g_Vars.currentplayernum;
 
 #if VERSION >= VERSION_NTSC_1_0 && defined(DEBUG)
-	if (((g_Vars.bond->isdead && g_Vars.coop->isdead)
+	if (((coopAllDead())
 			|| g_Vars.bond->aborted
-			|| g_Vars.coop->aborted
+			|| coopAnyAborted()
 			|| !objectiveIsAllComplete()) && !debugIsSetCompleteEnabled())
 #else
-	if ((g_Vars.bond->isdead && g_Vars.coop->isdead)
+	if ((coopAllDead())
 			|| g_Vars.bond->aborted
-			|| g_Vars.coop->aborted
+			|| coopAnyAborted()
 			|| !objectiveIsAllComplete())
 #endif
 	{
@@ -1767,14 +1768,14 @@ void endscreenPushSolo(void)
 	g_Menus[g_MpPlayerNum].playernum = 0;
 
 #if VERSION >= VERSION_NTSC_1_0 && defined(DEBUG)
-	if (((g_Vars.bond->isdead && g_Vars.coop->isdead)
+	if (((coopAllDead())
 			|| g_Vars.bond->aborted
-			|| g_Vars.coop->aborted
+			|| coopAnyAborted()
 			|| !objectiveIsAllComplete()) && !debugIsSetCompleteEnabled())
 #else
-	if ((g_Vars.bond->isdead && g_Vars.coop->isdead)
+	if ((coopAllDead())
 			|| g_Vars.bond->aborted
-			|| g_Vars.coop->aborted
+			|| coopAnyAborted()
 			|| !objectiveIsAllComplete())
 #endif
 	{

@@ -1,5 +1,6 @@
 #include <ultra64.h>
 #include <n_libaudio.h>
+#include "game/playermgr.h"
 #include "constants.h"
 #include "game/music.h"
 #include "game/zbuf.h"
@@ -1056,7 +1057,7 @@ void musicTick(void)
 		if (g_MusicDeathTimer240 > 0
 				&& (g_Vars.normmplayerisrunning
 					|| (g_Vars.antiplayernum >= 0 && !g_Vars.bond->isdead)
-					|| (g_Vars.coopplayernum >= 0 && (!g_Vars.bond->isdead || !g_Vars.coop->isdead)))) {
+					|| (g_Vars.coopplayernum >= 0 && !coopAllDead()))) {
 			// Someone is dying in MP, or anti is dying, or *one* person is dying in coop
 			g_MusicSilenceTimer60 = 0;
 			g_MusicDeathTimer240 -= g_Vars.lvupdate240;

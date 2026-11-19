@@ -4480,8 +4480,15 @@ void weaponTick(struct prop *prop)
 					if (ownerplayernum == 2) {
 						u32 mask = 0;
 
-						if (g_Vars.coop && g_Vars.coop->prop) {
-							mask |= 1 << playermgrGetPlayerNumByProp(g_Vars.coop->prop);
+						if (g_Vars.coopplayernum >= 0) {
+							// every co-op player
+							s32 pn;
+
+							for (pn = 0; pn < MAX_PLAYERS; pn++) {
+								if (g_Vars.players[pn] && g_Vars.players[pn]->prop) {
+									mask |= 1 << pn;
+								}
+							}
 						}
 
 						if (g_Vars.bond && g_Vars.bond->prop) {
@@ -8265,11 +8272,7 @@ void cctvTick(struct prop *camprop)
 
 	// If playing in coop mode, cycle between players in alternating frames
 	if (g_Vars.coopplayernum >= 0) {
-		if (g_Vars.lvframenum & 1) {
-			playerprop = g_Vars.bond->prop;
-		} else {
-			playerprop = g_Vars.coop->prop;
-		}
+		playerprop = coopPlayerPropForFrame();
 	} else {
 		playerprop = g_Vars.bond->prop;
 	}
@@ -8723,11 +8726,7 @@ void autogunTick(struct prop *prop)
 		} else {
 			// Not configured for teams, so target a player
 			if (g_Vars.coopplayernum >= 0) {
-				if (g_Vars.lvframenum & 1) {
-					target = g_Vars.bond->prop;
-				} else {
-					target = g_Vars.coop->prop;
-				}
+				target = coopPlayerPropForFrame();
 			} else {
 				target = g_Vars.bond->prop;
 			}
@@ -16369,7 +16368,7 @@ bool propobjInteract(struct prop *prop)
 	if (g_Vars.normmplayerisrunning) {
 		scenarioHandleActivatedProp(g_Vars.currentplayer->prop->chr, prop);
 	} else {
-		if (g_Vars.currentplayernum == g_Vars.coopplayernum) {
+		if (PLAYERNUM_IS_COOP(g_Vars.currentplayernum)) {
 			obj->hidden |= OBJHFLAG_ACTIVATED_BY_COOP;
 		} else if (g_Vars.currentplayernum == g_Vars.bondplayernum) {
 			obj->hidden |= OBJHFLAG_ACTIVATED_BY_BOND;
@@ -20887,7 +20886,7 @@ void doorsActivate(struct prop *doorprop, bool allowliftclose)
 		}
 	}
 
-	if (g_Vars.currentplayernum == g_Vars.coopplayernum) {
+	if (PLAYERNUM_IS_COOP(g_Vars.currentplayernum)) {
 		door->base.hidden |= OBJHFLAG_ACTIVATED_BY_COOP;
 	} else if (g_Vars.currentplayernum == g_Vars.bondplayernum) {
 		door->base.hidden |= OBJHFLAG_ACTIVATED_BY_BOND;
@@ -20988,7 +20987,7 @@ bool propdoorInteract(struct prop *doorprop)
 			}
 		}
 
-		if (g_Vars.currentplayernum == g_Vars.coopplayernum) {
+		if (PLAYERNUM_IS_COOP(g_Vars.currentplayernum)) {
 			door->base.hidden |= OBJHFLAG_ACTIVATED_BY_COOP;
 		} else if (g_Vars.currentplayernum == g_Vars.bondplayernum) {
 			door->base.hidden |= OBJHFLAG_ACTIVATED_BY_BOND;

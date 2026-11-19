@@ -6467,7 +6467,7 @@ void bgunDisarm(struct prop *attackerprop)
 		// because AI lists can fail the mission if the player has zero
 		// quantity.
 		if (g_Vars.coopplayernum >= 0
-				&& (attackerprop == g_Vars.bond->prop || attackerprop == g_Vars.coop->prop)
+				&& (attackerprop && attackerprop->type == PROPTYPE_PLAYER)
 				&& bgunIsMissionCritical(weaponnum)) {
 			return;
 		}

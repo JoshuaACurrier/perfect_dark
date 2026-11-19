@@ -105,6 +105,11 @@
 #define EXPLOSION_OWNER_IS_ANTI_PLAYER(expowner) ((expowner) == g_Vars.antiplayernum)
 #endif
 
+// Joanna, or anyone in a co-op game (the original tested for g_Vars.bond or g_Vars.coop)
+#define PLAYER_IS_BOND_OR_COOP(plr) ((plr) == g_Vars.bond || g_Vars.coopplayernum >= 0)
+// a co-op buddy: anyone but Joanna
+#define PLAYERNUM_IS_COOP(plrnum) (g_Vars.coopplayernum >= 0 && (plrnum) != g_Vars.bondplayernum)
+
 #define VALIDWEAPON()       (g_Vars.currentplayer->gunctrl.weaponnum >= WEAPON_UNARMED && g_Vars.currentplayer->gunctrl.weaponnum <= WEAPON_COMBATBOOST)
 #define FUNCISSEC()         (VALIDWEAPON() && (g_PlayerConfigsArray[g_Vars.currentplayerstats->mpindex].gunfuncs[(g_Vars.currentplayer->gunctrl.weaponnum - 1) >> 3] & (1 << ((g_Vars.currentplayer->gunctrl.weaponnum - 1) & 7))))
 

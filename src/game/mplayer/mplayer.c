@@ -303,7 +303,8 @@ void mpReset(void)
 	// Counter-Operative now uses a different approach which allows more than 2 players.
 	// Co-Operative, on the other hand, is currently limited to 2 players.
 	// Due to the change in approach, it's better to ignore 2.x controls for Counter-Operative.
-	if (g_Vars.coopplayernum >= 0)
+	// (An online co-op mission can have more than two players too: it goes the other way.)
+	if (g_Vars.coopplayernum >= 0 && !g_NetMode)
 #endif
 	{
 		struct mpplayerconfig tmp;
@@ -362,6 +363,16 @@ void mpReset(void)
 				g_PlayerConfigsArray[i].newtitle = g_PlayerConfigsArray[i].title;
 				g_MpNumChrs++;
 				mpindex++;
+
+#ifndef PLATFORM_N64
+				if (g_Vars.coopplayernum >= 0) {
+					if (g_Vars.coopradaron) {
+						g_PlayerConfigsArray[i].base.displayoptions |= MPDISPLAYOPTION_RADAR;
+					} else {
+						g_PlayerConfigsArray[i].base.displayoptions &= ~MPDISPLAYOPTION_RADAR;
+					}
+				}
+#endif
 			}
 		}
 	}
@@ -1456,7 +1467,7 @@ Gfx *mpRenderModalText(Gfx *gdl)
 			&& g_Vars.currentplayer->isdead
 			&& g_Vars.currentplayer->redbloodfinished
 			&& g_Vars.currentplayer->deathanimfinished
-			&& !(g_Vars.coopplayernum >= 0 && ((g_Vars.bond->isdead && g_Vars.coop->isdead) || !g_Vars.currentplayer->coopcanrestart || g_InCutscene))
+			&& !(g_Vars.coopplayernum >= 0 && ((coopAllDead()) || !g_Vars.currentplayer->coopcanrestart || g_InCutscene))
 			&& !(g_Vars.antiplayernum >= 0 && ((PLAYER_IS_NOT_ANTI(g_Vars.currentplayer) || g_InCutscene)))
 			&& g_NumReasonsToEndMpMatch == 0) {
 		// Render "Press START" text

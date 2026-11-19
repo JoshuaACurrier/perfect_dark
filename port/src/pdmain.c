@@ -477,8 +477,8 @@ void mainLoop(void)
 #else
 			if (g_Vars.antiplayernum < 0) {
 				// Counter-Operative now uses a different approach which allows more than 2 players.
-				// Co-Operative, on the other hand, is currently limited to 2 players.
-				g_MpSetup.chrslots = 0x03;
+				// Co-Operative, on the other hand, is limited to 2 players offline.
+				g_MpSetup.chrslots = (g_NetMode && numplayers > 2) ? ((1 << numplayers) - 1) : 0x03;
 			}
 #endif
 			mpReset();

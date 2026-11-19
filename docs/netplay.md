@@ -52,10 +52,10 @@ Limits for now:
 * `Net.Server.JoinInProgress=0` on the host switches all of this off (no spare slots, late joiners
   wait for the next match).
 
-### Co-op missions (2 players)
+### Co-op missions (2 to 8 players)
 
 1. Host: `Network Game` -> `Host Game` -> `Co-Operative Mission`, then pick the mission and difficulty as usual.
-   The host plays Joanna; the player who joins is the co-op buddy.
+   The host plays Joanna; everyone who joins is a co-op buddy.
 2. Client: join as above. The mission starts for both when the host accepts it.
 3. The host's game runs all guards and mission scripts. Objectives, HUD messages, alarms,
    countdown timers, music changes, guards spawned by the mission, and guards' dropped guns
@@ -74,8 +74,16 @@ Limits for now:
 
 Known gaps in co-op: cutscenes are skipped; the buddy uses the Combat Sim character model;
 items handed out by mission scripts are not synced yet; objects that scripts move are not;
-a late joiner starts with the mission's starting weapons and hears the default music;
-only 2 players.
+a late joiner starts with the mission's starting weapons and hears the default music.
+
+More than two players: the original game has exactly one buddy, and its code said "Joanna or the
+buddy" in some 25 places. Those now mean "any player": the mission fails when everyone is dead;
+a dead player comes back by taking half the health of the living player who has the most; guards,
+cameras and autoguns look at every player in turn; an objective that needs an item is met when
+any player holds it; anything a buddy does that the mission script asks about counts as "the
+buddy did it". The script's own idea of "the buddy" (for lines of speech and the like) is still
+the first one. `--net-antikill SECS` on a co-op host kills every buddy every SECS seconds to
+exercise the respawn.
 
 ### Counter-operative missions (2 to 8 players)
 

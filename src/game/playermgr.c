@@ -1,5 +1,7 @@
 #include <ultra64.h>
 #include "constants.h"
+#include "game/chr.h"
+#include "game/chraction.h"
 #include "game/cheats.h"
 #include "game/bondgun.h"
 #include "game/player.h"
@@ -891,4 +893,109 @@ s32 playermgrGetPlayerAtOrder(s32 ordernum)
 	}
 
 	return 0;
+}
+
+bool coopAllDead(void)
+{
+	s32 i;
+
+	for (i = 0; i < MAX_PLAYERS; i++) {
+		if (g_Vars.players[i] && !g_Vars.players[i]->isdead) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool coopAllDeadAndDone(void)
+{
+	s32 i;
+
+	for (i = 0; i < MAX_PLAYERS; i++) {
+		struct player *player = g_Vars.players[i];
+
+		if (player && !(player->isdead && player->redbloodfinished && player->deathanimfinished)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool coopAnyAborted(void)
+{
+	s32 i;
+
+	for (i = 0; i < MAX_PLAYERS; i++) {
+		if (g_Vars.players[i] && g_Vars.players[i]->aborted) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+s32 coopOtherPlayerNum(s32 playernum)
+{
+	s32 fallback = playernum;
+	s32 i;
+
+	if (playernum != g_Vars.bondplayernum && g_Vars.bond && !g_Vars.bond->isdead) {
+		return g_Vars.bondplayernum;
+	}
+
+	for (i = 0; i < MAX_PLAYERS; i++) {
+		if (i != playernum && g_Vars.players[i] && g_Vars.players[i]->prop) {
+			if (!g_Vars.players[i]->isdead) {
+				return i;
+			}
+
+			if (fallback == playernum) {
+				fallback = i;
+			}
+		}
+	}
+
+	return fallback;
+}
+
+s32 coopHealthiestOtherPlayerNum(s32 playernum)
+{
+	s32 best = -1;
+	f32 besthealth = 0;
+	s32 i;
+
+	for (i = 0; i < MAX_PLAYERS; i++) {
+		struct player *player = g_Vars.players[i];
+
+		if (i != playernum && player && player->prop && player->prop->chr && !player->isdead) {
+			f32 health = player->bondhealth + chrGetShield(player->prop->chr) * 0.125f;
+
+			if (best < 0 || health > besthealth) {
+				best = i;
+				besthealth = health;
+			}
+		}
+	}
+
+	return best;
+}
+
+struct prop *coopPlayerPropForFrame(void)
+{
+	s32 count = PLAYERCOUNT();
+	s32 start = count > 0 ? g_Vars.lvframenum % count : 0;
+	s32 n;
+
+	// (a living one if there is one)
+	for (n = 0; n < count; n++) {
+		struct player *player = g_Vars.players[playermgrGetPlayerAtOrder((start + n) % count)];
+
+		if (player && player->prop && !player->isdead) {
+			return player->prop;
+		}
+	}
+
+	return g_Vars.bond->prop;
 }

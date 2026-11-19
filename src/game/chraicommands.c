@@ -6981,11 +6981,7 @@ bool aiSayQuip(void)
 		playernum = playermgrGetPlayerNumByProp(chr->prop);
 
 		if (g_Vars.coopplayernum >= 0 && g_Vars.players[playernum]->isdead) {
-			if (playernum == g_Vars.bondplayernum) {
-				playernum = g_Vars.coopplayernum;
-			} else {
-				playernum = g_Vars.bondplayernum;
-			}
+			playernum = coopOtherPlayerNum(playernum);
 		}
 
 		setCurrentPlayerNum(playernum);
@@ -8932,7 +8928,7 @@ bool aiClearInventory(void)
 	for (playernum = 0; playernum < PLAYERCOUNT(); playernum++) {
 		setCurrentPlayerNum(playernum);
 
-		if (g_Vars.currentplayer == g_Vars.bond || g_Vars.currentplayer == g_Vars.coop) {
+		if (PLAYER_IS_BOND_OR_COOP(g_Vars.currentplayer)) {
 			invClear();
 #if VERSION >= VERSION_NTSC_1_0
 			g_Vars.currentplayer->devicesactive = 0;
@@ -9080,10 +9076,16 @@ bool aiToggleP1P2(void)
 		struct chrdata *chr = chrFindById(g_Vars.chrdata, cmd[2]);
 
 		if (chr) {
-			if (chr->p1p2 == g_Vars.bondplayernum && !g_Vars.coop->isdead) {
-				chr->p1p2 = g_Vars.coopplayernum;
-			} else if (!g_Vars.bond->isdead) {
-				chr->p1p2 = g_Vars.bondplayernum;
+			// the next living player after the one it has now
+			s32 n;
+
+			for (n = 1; n < MAX_PLAYERS; n++) {
+				s32 next = (chr->p1p2 + n) % MAX_PLAYERS;
+
+				if (g_Vars.players[next] && !g_Vars.players[next]->isdead) {
+					chr->p1p2 = next;
+					break;
+				}
 			}
 		}
 	}
@@ -9108,11 +9110,7 @@ bool aiChrSetP1P2(void)
 			u32 playernum = playermgrGetPlayerNumByProp(chr2->prop);
 
 			if (!g_Vars.players[playernum]->isdead) {
-				if (chr2->prop == g_Vars.coop->prop) {
-					chr1->p1p2 = g_Vars.coopplayernum;
-				} else {
-					chr1->p1p2 = g_Vars.bondplayernum;
-				}
+				chr1->p1p2 = playernum;
 			}
 		}
 	}

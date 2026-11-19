@@ -776,14 +776,14 @@ MenuItemHandlerResult menuhandlerAcceptMission(s32 operation, struct menuitem *i
 					++numplayers;
 				}
 			}
-			if (numplayers > 2) {
-				// TODO: more than one co-op buddy
-				sysLogPrintf(LOG_WARNING, "NET: co-op supports 2 players for now, %d are connected", numplayers);
-				numplayers = 2;
+			// spare slots for people who join during the mission (netjoin.c); a host who
+			// starts alone gets a buddy slot that stays empty until someone takes it
+			numplayers += netjoinSpareSlots();
+			if (numplayers > MAX_PLAYERS) {
+				numplayers = MAX_PLAYERS;
 			}
-			if (numplayers < 2 && netjoinSpareSlots() > 0) {
-				// alone for now: the buddy's slot stays empty until someone joins (netjoin.c)
-				numplayers = 2;
+			if (numplayers > g_NetMaxClients) {
+				numplayers = g_NetMaxClients;
 			}
 			g_Vars.numaibuddies = 0;
 			g_Vars.bondplayernum = 0;

@@ -1268,7 +1268,7 @@ void playerChooseBodyAndHead(s32 *bodynum, s32 *headnum, s32 *arg2)
 	}
 
 	outfit = g_Vars.currentplayer->bondtype;
-	solo = !(g_Vars.coopplayernum >= 0) || (g_Vars.currentplayer != g_Vars.coop);
+	solo = !(g_Vars.coopplayernum >= 0) || (g_Vars.currentplayer == g_Vars.bond);
 
 	if (cheatIsActive(CHEAT_PLAYASELVIS)) {
 		*bodynum = BODY_THEKING;
@@ -4339,10 +4339,7 @@ void playerTick(bool arg0)
 			if (g_Vars.mplayerisrunning == false) {
 				mainEndStage();
 			} else if (g_Vars.coopplayernum >= 0) {
-				if (g_Vars.currentplayer == g_Vars.bond
-						&& g_Vars.coop->isdead
-						&& g_Vars.coop->redbloodfinished
-						&& g_Vars.coop->deathanimfinished) {
+				if (coopAllDeadAndDone()) {
 					mainEndStage();
 				} else {
 					chrsClearRefsToPlayer(g_Vars.currentplayernum);
@@ -4847,7 +4844,7 @@ Gfx *playerRenderHud(Gfx *gdl)
 									// nobody plays this slot (or its new owner is still loading)
 									!netjoinIsParked(g_Vars.currentplayernum) &&
 #endif
-									(!g_Vars.bond->isdead || !g_Vars.coop->isdead)) {
+									!coopAllDead()) {
 								f32 totalhealth;
 								u32 buddyplayernum = g_Vars.bondplayernum;
 								u32 prevplayernum = g_Vars.currentplayernum;
@@ -4863,7 +4860,11 @@ Gfx *playerRenderHud(Gfx *gdl)
 
 								// Get ready to respawn.
 								// The other player's health will be halved.
-								buddyplayernum = g_Vars.currentplayer == g_Vars.coop ? g_Vars.bondplayernum : g_Vars.coopplayernum;
+								// (of the players still alive, the one with the most to give)
+								buddyplayernum = coopHealthiestOtherPlayerNum(g_Vars.currentplayernum);
+								if ((s32)buddyplayernum < 0) {
+									buddyplayernum = coopOtherPlayerNum(g_Vars.currentplayernum);
+								}
 
 								setCurrentPlayerNum(buddyplayernum);
 								shield = chrGetShield(g_Vars.currentplayer->prop->chr) * 0.125f;

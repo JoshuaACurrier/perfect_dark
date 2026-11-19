@@ -1,6 +1,7 @@
 #include <ultra64.h>
 #include "constants.h"
 #include "../lib/naudio/n_sndp.h"
+#include "game/playermgr.h"
 #include "game/camdraw.h"
 #include "game/game_006900.h"
 #include "game/body.h"
@@ -5800,9 +5801,9 @@ u32 menuChooseMusic(void)
 
 	if (g_MenuData.root == MENUROOT_MPENDSCREEN) {
 		if (g_Vars.coopplayernum >= 0) {
-			if ((g_Vars.bond->isdead && g_Vars.coop->isdead)
+			if ((coopAllDead())
 					|| g_Vars.bond->aborted
-					|| g_Vars.coop->aborted
+					|| coopAnyAborted()
 					|| !objectiveIsAllComplete()) {
 				return MUSIC_MISSION_FAILED;
 			}
